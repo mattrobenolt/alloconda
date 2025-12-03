@@ -1,0 +1,12 @@
+.{
+    .name = .alloconda,
+    .version = "0.0.0",
+    .fingerprint = 0x5b5b5c2cc66b1cb5,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

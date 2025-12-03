@@ -1,0 +1,13 @@
+.{
+    .name = .zigadd,
+    .version = "0.0.0",
+    .dependencies = .{
+        .alloconda = .{
+            .url = "../../",
+            .hash = "alloconda-0.0.0-tRxrxssMAACMZrMYUisBF8tgVSk9FWQKiCLjANGZo9Bv",
+        },
+    },
+    .minimum_zig_version = "0.15.2",
+    .fingerprint = 0x2bf3ff778d90b82e,
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}
