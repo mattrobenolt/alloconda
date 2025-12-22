@@ -86,15 +86,23 @@ Options:
 Scaffold a Zig project for an alloconda Python extension module.
 
 ```bash
-alloconda init --alloconda-path ../../
+alloconda init
 ```
+
+This creates `build.zig`, `build.zig.zon`, `src/root.zig`, and a default package
+directory at `src/<project_name>/__init__.py`.
 
 Options:
 - `--name` to override the project name
 - `--module-name` to override the Python extension module name
 - `--dir` to choose a target directory
-- `--alloconda-path` to point at a local alloconda checkout
+- `--alloconda-path` to use a local checkout or `git+https` URL
 - `--force` to overwrite existing files
+
+If `--alloconda-path` is omitted, alloconda is fetched from GitHub and pinned in
+`build.zig.zon`.
+
+If `pyproject.toml` exists, the build backend stanza is added automatically.
 
 ### `alloconda inspect`
 

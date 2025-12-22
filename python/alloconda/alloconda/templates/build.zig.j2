@@ -1,0 +1,24 @@
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const alloconda = b.dependency("alloconda", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    mod.addImport("alloconda", alloconda.module("alloconda"));
+
+    const lib = @import("alloconda").addPythonLibrary(b, .{
+        .name = "{{ package_name }}",
+        .root_module = mod,
+    });
+    b.installArtifact(lib);
+}

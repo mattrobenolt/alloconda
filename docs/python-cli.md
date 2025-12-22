@@ -15,11 +15,13 @@ uvx alloconda wheel-all --python-version 3.14 --include-musllinux
 ## Scaffold
 
 ```bash
-uvx alloconda init --name hello_alloconda --alloconda-path ../alloconda
+uvx alloconda init --name hello_alloconda
 ```
 
-`alloconda init` creates `build.zig`, `build.zig.zon`, and `src/root.zig`. It does
-not create the Python package or `pyproject.toml`, so add those yourself.
+`alloconda init` creates `build.zig`, `build.zig.zon`, `src/root.zig`, and a
+`src/<project_name>/__init__.py` package directory. If a `pyproject.toml`
+exists, it adds the `build-system` block automatically.
+Pass `--alloconda-path` to use a local alloconda checkout instead of fetching.
 
 ## Build
 

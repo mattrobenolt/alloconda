@@ -1,0 +1,12 @@
+.{
+    .name = .{{ package_name }},
+    .version = "{{ zon_version }}",
+    .fingerprint = {{ fingerprint_hex }},
+    .dependencies = .{
+{% if alloconda_dep_block %}
+{{ alloconda_dep_block | indent(8, true) }}
+{% endif %}
+    },
+    .minimum_zig_version = "{{ minimum_zig_version }}",
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

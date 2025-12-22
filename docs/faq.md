@@ -1,9 +1,10 @@
 # FAQ
 
-## Why does `alloconda init` require `--alloconda-path`?
+## Why does `alloconda init` run `zig fetch`?
 
-The scaffold uses a local path dependency in `build.zig.zon`. Point it at a local
-alloconda checkout until a published Zig package is available.
+The scaffold adds alloconda as a Zig dependency. By default it fetches
+`git+https://github.com/mattrobenolt/alloconda`, which gives you a pinned hash in
+`build.zig.zon`. Use `--alloconda-path` if you want a local checkout instead.
 
 ## Why does `alloconda build` ask for a package directory?
 

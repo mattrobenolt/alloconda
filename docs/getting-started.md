@@ -7,8 +7,8 @@ This tutorial creates a tiny extension module that exposes `hello(name)`.
 - Zig 0.15.x.
 - Python 3.14.
 - The `alloconda` CLI available on your PATH.
-- A local alloconda checkout (used by `alloconda init`).
 - `uv` for project init and running the CLI without a global install.
+- Network access for `zig fetch` (or pass `--alloconda-path`).
 
 ## 1) Initialize a Python project (uv)
 
@@ -20,30 +20,22 @@ cd hello_alloconda
 uv init
 ```
 
-Then add the alloconda build backend and basic metadata:
-
-```toml
-[build-system]
-requires = ["alloconda"]
-build-backend = "alloconda.build_backend"
-
-[project]
-name = "hello_alloconda"
-version = "0.1.0"
-requires-python = ">=3.14"
-```
-
-If you do not use `uv`, create the same `pyproject.toml` manually.
+`uv init` writes a `pyproject.toml` with basic project metadata. `alloconda init`
+will add the build backend stanza automatically.
 
 ## 2) Scaffold the Zig project
 
 From a working directory, run:
 
 ```bash
-uvx alloconda init --name hello_alloconda --alloconda-path ../alloconda
+uvx alloconda init --name hello_alloconda
 # or, if alloconda is already installed:
-# alloconda init --name hello_alloconda --alloconda-path ../alloconda
+# alloconda init --name hello_alloconda
 ```
+
+If you want to use a local alloconda checkout during development, pass
+`--alloconda-path ../alloconda`. Otherwise `alloconda init` will pin the
+dependency via `zig fetch`.
 
 `alloconda init` writes:
 
@@ -53,17 +45,11 @@ uvx alloconda init --name hello_alloconda --alloconda-path ../alloconda
 
 The default module name is `_<project_name>` (so `_hello_alloconda` here).
 
-## 3) Create the Python package
+## 3) Verify the Python package
 
-Create a package directory and minimal `pyproject.toml` so the CLI can locate the
-package and read metadata:
-
-```bash
-mkdir -p src/hello_alloconda
-```
-
-If `uv init` already created a package layout for you, adjust the directory name
-or skip this step.
+`alloconda init` creates `src/<project_name>/__init__.py` so the CLI can locate
+the package directory. If you prefer a different layout, move the package and
+set `tool.alloconda.package-dir` in `pyproject.toml`.
 
 ## 4) Build and import
 

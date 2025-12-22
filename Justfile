@@ -2,7 +2,7 @@ default:
     @just --list
 
 sync:
-    uv sync --all-packages
+    uv sync --all-packages --all-groups --all-extras
 
 lint:
     zig fmt --check .

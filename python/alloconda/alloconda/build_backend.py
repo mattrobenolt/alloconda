@@ -101,7 +101,9 @@ def build_editable(
     wheel_name = f"{dist_name}-{metadata.version}-{tags.python_tag}-{tags.abi_tag}-{tags.platform_tag}.whl"
     wheel_path = Path(wheel_directory) / wheel_name
 
-    _write_editable_wheel(wheel_path, metadata, dist_name, tags, project_dir)
+    _write_editable_wheel(
+        wheel_path, metadata, dist_name, tags, project_dir, package_dir
+    )
     return wheel_path.name
 
 
@@ -180,8 +182,10 @@ def _write_editable_wheel(
     dist_name: str,
     tags,
     project_dir: Path,
+    package_dir: Path,
 ) -> None:
     dist_info = f"{dist_name}-{metadata.version}.dist-info"
+    pth_root = project_dir if package_dir == project_dir else package_dir.parent
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp)
         dist_info_dir = staging / dist_info
@@ -200,7 +204,7 @@ def _write_editable_wheel(
             )
         )
 
-        (staging / f"{dist_name}.pth").write_text(str(project_dir.resolve()) + "\n")
+        (staging / f"{dist_name}.pth").write_text(str(pth_root.resolve()) + "\n")
 
         write_record(staging, dist_info_dir)
 

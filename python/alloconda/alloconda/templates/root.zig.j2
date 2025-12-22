@@ -1,0 +1,17 @@
+const std = @import("std");
+const py = @import("alloconda");
+
+pub const MODULE = py.module(
+    "{{ module_name }}",
+    "Alloconda module stub.",
+    .{
+        .hello = py.method(hello, .{
+            .doc = "Echo back the provided name.",
+            .args = &.{ "name" },
+        }),
+    },
+);
+
+fn hello(name: []const u8) []const u8 {
+    return name;
+}
