@@ -47,7 +47,11 @@ def cache_root(explicit: Path | None) -> Path:
 
 
 def fetch_release_assets() -> list[PbsAsset]:
-    resp = httpx.get(PBS_RELEASE_URL, timeout=30.0)
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    resp = httpx.get(PBS_RELEASE_URL, headers=headers, timeout=30.0)
     resp.raise_for_status()
     data = resp.json()
     assets = []

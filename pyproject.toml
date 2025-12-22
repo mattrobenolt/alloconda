@@ -17,3 +17,4 @@ members = ["python/*"]
 
 [tool.uv.sources]
 alloconda = { workspace = true }
+alloconda-docs = { workspace = true }

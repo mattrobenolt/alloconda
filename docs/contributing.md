@@ -83,14 +83,12 @@ For local previews:
 just docs-serve
 ```
 
-Cloudflare Pages (Git integration) build settings:
+Docs are deployed via GitHub Actions using Nix. The workflow runs
+`nix develop --command just docs` and deploys with Wrangler. Configure the
+Cloudflare Pages project for External CI and set these GitHub secrets:
 
-- Build command: `bash scripts/cloudflare/build-docs.sh`
-- Build output directory: `book`
-- Root directory: repo root (where `book.toml` lives)
-
-The build script downloads mdBook and runs the build. You can override the
-version by setting `MD_BOOK_VERSION` in the Pages build environment.
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 
 ## Roadmap
 
