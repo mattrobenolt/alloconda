@@ -15,14 +15,14 @@ build-backend = "alloconda.build_backend"
 
 ## Building wheels
 
-You can either use the alloconda CLI:
+You can either use the alloconda CLI via `uvx`:
 
 ```bash
-alloconda wheel
+uvx alloconda wheel
 ```
 
-Or use standard PEP 517 tooling (for example, `pip wheel .`). The build backend
-reads `pyproject.toml` metadata and `tool.alloconda` settings.
+Or use standard PEP 517 tooling, such as `uv build --package your-project`. The
+build backend reads `pyproject.toml` metadata and `tool.alloconda` settings.
 
 For cross-compilation and multi-target builds, prefer the CLI (`wheel` /
 `wheel-all`) so you can control the target matrix directly.

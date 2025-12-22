@@ -10,6 +10,7 @@ hello_alloconda/
 └── src/
     ├── root.zig
     └── hello_alloconda/
+        └── __init__.py
 ```
 
 Notes:

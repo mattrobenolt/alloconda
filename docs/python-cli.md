@@ -1,10 +1,11 @@
 # CLI guide
 
-The `alloconda` CLI builds, installs, and packages your extension module.
+The `alloconda` CLI builds, installs, and packages your extension module. This
+guide assumes you run it via `uvx`.
 
 ## Running via uvx
 
-If you use `uv`, you can run the CLI without a global install:
+Use `uvx` to run the CLI:
 
 ```bash
 uvx alloconda build
@@ -26,7 +27,7 @@ Pass `--alloconda-path` to use a local alloconda checkout instead of fetching.
 ## Build
 
 ```bash
-alloconda build
+uvx alloconda build
 ```
 
 Builds the Zig project, detects the `PyInit_*` symbol, and copies the extension
@@ -35,7 +36,7 @@ into the package directory. Use `--package-dir` if the CLI cannot infer it.
 ## Develop
 
 ```bash
-alloconda develop
+uvx alloconda develop
 ```
 
 Performs an editable install via `pip install -e .` (or `uv pip` if available).
@@ -43,8 +44,8 @@ Performs an editable install via `pip install -e .` (or `uv pip` if available).
 ## Wheels
 
 ```bash
-alloconda wheel
-alloconda wheel-all
+uvx alloconda wheel
+uvx alloconda wheel-all
 ```
 
 `wheel` builds a single wheel for the current platform. `wheel-all` builds a
@@ -54,8 +55,8 @@ feature: you can target manylinux/musllinux, macOS, and Windows from one host.
 ## Inspect
 
 ```bash
-alloconda inspect --lib zig-out/lib/libhello_alloconda.dylib
-alloconda inspect --wheel dist/hello_alloconda-0.1.0-*.whl --verify
+uvx alloconda inspect --lib zig-out/lib/libhello_alloconda.dylib
+uvx alloconda inspect --wheel dist/hello_alloconda-0.1.0-*.whl --verify
 ```
 
 Inspect a built library or wheel and print derived metadata.
@@ -63,7 +64,7 @@ Inspect a built library or wheel and print derived metadata.
 ## Python headers for cross builds
 
 ```bash
-alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
+uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
 This caches python-build-standalone headers for cross compilation.

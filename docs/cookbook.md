@@ -33,7 +33,7 @@ Zig 0.15 requires an explicit options struct:
 If symbol detection picks the wrong `PyInit_*`, pass the module explicitly:
 
 ```bash
-alloconda build --module _my_module
+uvx alloconda build --module _my_module
 ```
 
 ## Control `__init__.py`

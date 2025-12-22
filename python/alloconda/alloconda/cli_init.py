@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import click
@@ -29,6 +30,16 @@ def normalize_name(name: str) -> str:
     if name[0].isdigit():
         name = f"_{name}"
     return name
+
+
+def read_project_name(dest_dir: Path) -> str | None:
+    pyproject = dest_dir / "pyproject.toml"
+    if not pyproject.is_file():
+        return None
+    data = tomllib.loads(pyproject.read_text())
+    project = data.get("project", {})
+    name = project.get("name")
+    return name if isinstance(name, str) else None
 
 
 def find_alloconda_root(start: Path) -> Path | None:
@@ -155,7 +166,8 @@ def init(
 ) -> None:
     """Scaffold build.zig and a minimal root module."""
     dest_dir = dest_dir.resolve()
-    package_name = normalize_name(project_name or dest_dir.name)
+    inferred_name = project_name or read_project_name(dest_dir) or dest_dir.name
+    package_name = normalize_name(inferred_name)
     module_name = module_name or f"_{package_name}"
 
     alloconda_root = find_alloconda_root(dest_dir)

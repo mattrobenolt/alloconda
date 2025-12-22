@@ -16,7 +16,7 @@ build hosts.
 For cross builds, fetch headers for the target Python version and platform:
 
 ```bash
-alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
+uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
 The headers are cached locally and reused across builds.
@@ -26,7 +26,7 @@ You can also let `wheel-all` fetch missing headers with `--fetch`.
 ## Build a single cross-target wheel
 
 ```bash
-alloconda wheel \
+uvx alloconda wheel \
   --python-version 3.14 \
   --manylinux 2_28 \
   --arch x86_64
@@ -36,10 +36,10 @@ Examples for other targets:
 
 ```bash
 # macOS arm64
-alloconda wheel --python-version 3.14 --platform-tag macosx_14_0_arm64 --arch arm64
+uvx alloconda wheel --python-version 3.14 --platform-tag macosx_14_0_arm64 --arch arm64
 
 # Windows x86_64
-alloconda wheel --python-version 3.14 --platform-tag win_amd64 --arch x86_64
+uvx alloconda wheel --python-version 3.14 --platform-tag win_amd64 --arch x86_64
 ```
 
 When `--python-version` is set, alloconda uses cached headers to select the right
@@ -52,21 +52,21 @@ By default, `wheel-all` targets macOS (arm64 + x86_64) and manylinux 2_28
 (x86_64 + aarch64). You can extend this matrix or override it entirely.
 
 ```bash
-alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows
 ```
 
 Use `--dry-run` to inspect the matrix before building, and `--fetch` to download
 headers automatically:
 
 ```bash
-alloconda wheel-all --python-version 3.14 --include-musllinux --dry-run
-alloconda wheel-all --python-version 3.14 --include-musllinux --fetch
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --dry-run
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --fetch
 ```
 
 To override the target list explicitly, use `--target` (repeatable):
 
 ```bash
-alloconda wheel-all --python-version 3.14 \\
+uvx alloconda wheel-all --python-version 3.14 \\
   --target macosx_14_0_arm64 \\
   --target manylinux_2_28_x86_64
 ```

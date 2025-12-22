@@ -6,13 +6,12 @@ This tutorial creates a tiny extension module that exposes `hello(name)`.
 
 - Zig 0.15.x.
 - Python 3.14.
-- The `alloconda` CLI available on your PATH.
-- `uv` for project init and running the CLI without a global install.
+- `uv` for project init and running the CLI via `uvx`.
 - Network access for `zig fetch` (or pass `--alloconda-path`).
 
 ## 1) Initialize a Python project (uv)
 
-If you use `uv`, start by creating a `pyproject.toml`:
+Start by creating a `pyproject.toml` with `uv`:
 
 ```bash
 mkdir hello_alloconda
@@ -20,17 +19,16 @@ cd hello_alloconda
 uv init
 ```
 
-`uv init` writes a `pyproject.toml` with basic project metadata. `alloconda init`
-will add the build backend stanza automatically.
+`uv init` writes a `pyproject.toml` with basic project metadata, including the
+project name that `alloconda init` will reuse. `alloconda init` will also add
+the build backend stanza automatically.
 
 ## 2) Scaffold the Zig project
 
 From a working directory, run:
 
 ```bash
-uvx alloconda init --name hello_alloconda
-# or, if alloconda is already installed:
-# alloconda init --name hello_alloconda
+uvx alloconda init
 ```
 
 If you want to use a local alloconda checkout during development, pass
@@ -54,24 +52,25 @@ set `tool.alloconda.package-dir` in `pyproject.toml`.
 ## 4) Build and import
 
 ```bash
-alloconda build
-python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda'))"
-```
-
-If you are using `uvx` instead of a global install:
-
-```bash
 uvx alloconda build
+uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda'))"
 ```
 
 If `alloconda build` cannot infer your package directory, pass it explicitly:
 
 ```bash
-alloconda build --package-dir src/hello_alloconda
+uvx alloconda build --package-dir src/hello_alloconda
 ```
 
 The CLI copies the built extension into the package directory and generates an
 `__init__.py` that re-exports the extension module.
+
+If you prefer an editable install, use:
+
+```bash
+uvx alloconda develop
+uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda'))"
+```
 
 ## 5) Edit the module
 
@@ -84,16 +83,10 @@ Alloconda can build a multi-platform wheel matrix from one machine. Start with a
 dry run to see the matrix:
 
 ```bash
-alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --dry-run
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --dry-run
 ```
 
 Then run the build (and fetch any missing headers automatically):
-
-```bash
-alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --fetch
-```
-
-You can also run these via `uvx`:
 
 ```bash
 uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --fetch

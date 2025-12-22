@@ -38,7 +38,10 @@ fmt-all:
     cd python/zigzon && just fmt
 
 docs:
+    zig build docs -p docs {{python_include}}
     mdbook build
+
+python_include := if env("ALLOCONDA_PYTHON_INCLUDE", "") != "" { "-Dpython-include=" + env("ALLOCONDA_PYTHON_INCLUDE") } else { "" }
 
 docs-serve:
     mdbook serve

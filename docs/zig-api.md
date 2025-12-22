@@ -2,6 +2,15 @@
 
 Alloconda exposes a small, Zig-first API for defining Python modules.
 
+The generated API reference is published alongside this book at
+[zig-docs/index.html](zig-docs/index.html).
+
+To generate it locally:
+
+```bash
+zig build docs -Dpython-include=/path/to/python/include -p docs
+```
+
 ## Module definition
 
 Export a single module definition named `MODULE`:
@@ -20,8 +29,8 @@ fn hello(name: []const u8) []const u8 {
 
 ## Method options
 
-`py.method` always takes an explicit options struct (Zig 0.15 requirement). You can
-attach docstrings and argument names:
+`py.method` always takes an explicit options struct. You can attach docstrings
+and argument names:
 
 ```zig
 .hello = py.method(hello, .{

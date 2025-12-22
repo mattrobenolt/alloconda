@@ -1,74 +1,35 @@
 # alloconda
 
-Alloconda is a Zig-first toolkit for building Python extension modules with a minimal,
-comptime-friendly API. It mirrors PyO3's ergonomics where it makes sense in Zig,
-without exposing the raw C API for common tasks.
+Alloconda is Zig-first Python extensions with cross-compiled wheels.
 
-## Highlights
+Project links:
+- Docs: <https://alloconda.withmatt.com>
+- Repo: <https://github.com/mattrobenolt/alloconda>
+- Zig API: <https://alloconda.withmatt.com/zig-docs/>
 
-- `pub const MODULE = ...` discovery with a generated `PyInit_*` wrapper.
-- Method wrappers with type conversions, optional arguments, and keyword names.
-- Ergonomic `Object` wrapper + `Bytes`/`List`/`Dict`/`Tuple` helpers.
-- Basic class/type support via `py.class(...).withTypes(...)`.
-- Error mapping helpers (`raiseError`, `Exception` enum).
-- CLI that builds, discovers module name, and writes `__init__.py`.
-- PEP 517 build backend for `pyproject.toml` projects.
-
-## Quick example
-
-```zig
-const py = @import("alloconda");
-
-const Greeter = py.class("Greeter", "A tiny class", .{
-    .hello = py.method(hello, .{ .self = true }),
-});
-
-pub const MODULE = py.module("_zigadd", "Example module", .{
-    .add = py.method(add, .{}),
-}).withTypes(.{ .Greeter = Greeter });
-
-fn add(a: i64, b: i64) i64 {
-    return a + b;
-}
-
-fn hello(self: py.Object, name: []const u8) []const u8 {
-    _ = self;
-    return name;
-}
-```
-
-In Python, the CLI generates an `__init__.py` that re-exports the extension.
-See `python/zigadd` for a working example and tests.
-
-## Build
+## Quickstart (uv)
 
 ```bash
-alloconda build
+mkdir hello_alloconda
+cd hello_alloconda
+uv init
+uvx alloconda init
+uvx alloconda develop
+uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda'))"
 ```
 
-Flags:
-- `--release` for ReleaseFast.
-- `--module` to override `PyInit_*` detection.
-- `--package-dir` to pick a target package directory.
+`alloconda init` scaffolds the Zig project, wires up the build backend, and
+creates a default Python package under `src/<project_name>/`.
+
+## Build wheels
+
+```bash
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --fetch
+```
+
+This builds a multi-platform wheel matrix in `dist/` using cached
+python-build-standalone headers.
 
 ## Documentation
 
-The mdBook source lives in `docs/` and is configured by `book.toml`.
-
-```bash
-mdbook build
-# or
-mdbook serve
-```
-
-## Repo layout
-
-- `src/root.zig`: core alloconda API.
-- `python/alloconda`: CLI package.
-- `python/zigadd`: demo extension module + tests.
-- `python/zigzon`: ZON codec example module + tests.
-
-## Notes
-
-- In Zig 0.15, `py.method` requires explicit options: use `py.method(fn, .{})`.
-- Class names are auto-qualified with the module name when added via `.withTypes`.
+The full guide lives at <https://alloconda.withmatt.com>.

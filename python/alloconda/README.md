@@ -1,7 +1,6 @@
 # alloconda CLI
 
-Alloconda ships a small CLI for building and packaging Zig-based Python extensions.
-It also provides a PEP 517 build backend for `pyproject.toml` projects.
+Alloconda is Zig-first Python extensions with cross-compiled wheels.
 
 ## Commands
 
@@ -11,7 +10,7 @@ Build the extension via `zig build`, detect the `PyInit_*` symbol, and copy the
 compiled library into the Python package directory.
 
 ```bash
-alloconda build
+uvx alloconda build
 ```
 
 Options:
@@ -31,7 +30,7 @@ Build a wheel by staging the package, copying the compiled extension, and writin
 PEP 427 path.
 
 ```bash
-alloconda wheel --python-tag cp312 --abi-tag cp312 --manylinux 2_28 --arch x86_64
+uvx alloconda wheel --python-tag cp312 --abi-tag cp312 --manylinux 2_28 --arch x86_64
 ```
 
 Options:
@@ -42,7 +41,7 @@ Options:
 - `--out-dir`: wheel output directory (default: `dist/`)
 - `--skip-build`: skip `zig build` if you already built the library
 
-When using `--python-version`, run `alloconda python fetch` first to populate the cache.
+When using `--python-version`, run `uvx alloconda python fetch` first to populate the cache.
 If `--python-tag` is omitted, it defaults from `--python-version` (e.g. `cp314`).
 
 ### `alloconda wheel-all`
@@ -50,7 +49,7 @@ If `--python-tag` is omitted, it defaults from `--python-version` (e.g. `cp314`)
 Build a full wheel matrix across common platforms and Python versions.
 
 ```bash
-alloconda wheel-all --python-version 3.14 --include-musllinux
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux
 ```
 
 Options:
@@ -65,7 +64,7 @@ Options:
 Build and install the project in editable mode via `pip install -e .` (or `uv pip`).
 
 ```bash
-alloconda develop
+uvx alloconda develop
 ```
 
 Options:
@@ -86,7 +85,7 @@ Options:
 Scaffold a Zig project for an alloconda Python extension module.
 
 ```bash
-alloconda init
+uvx alloconda init
 ```
 
 This creates `build.zig`, `build.zig.zon`, `src/root.zig`, and a default package
@@ -110,8 +109,8 @@ Inspect a built library or wheel and print derived metadata. Useful for quick
 sanity checks in scripts.
 
 ```bash
-alloconda inspect --lib zig-out/lib/libzigadd.dylib
-alloconda inspect --wheel dist/zigadd-0.1.0-*.whl --verify
+uvx alloconda inspect --lib zig-out/lib/libzigadd.dylib
+uvx alloconda inspect --wheel dist/zigadd-0.1.0-*.whl --verify
 ```
 
 ### `alloconda python fetch`
@@ -119,7 +118,7 @@ alloconda inspect --wheel dist/zigadd-0.1.0-*.whl --verify
 Fetch and cache python-build-standalone headers for cross builds.
 
 ```bash
-alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
+uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
 The cache location can be overridden with `ALLOCONDA_PBS_CACHE` or `--cache-dir`.

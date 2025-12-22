@@ -19,6 +19,18 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    const docs_obj = b.addObject(.{
+        .name = "alloconda-docs",
+        .root_module = mod,
+    });
+    const docs_install = b.addInstallDirectory(.{
+        .source_dir = docs_obj.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "zig-docs",
+    });
+    const docs_step = b.step("docs", "Generate Zig API docs");
+    docs_step.dependOn(&docs_install.step);
 }
 
 pub const Options = struct {
