@@ -1,4 +1,8 @@
-# alloconda
+```
+  ▜ ▜          ▌
+▀▌▐ ▐ ▛▌▛▘▛▌▛▌▛▌▀▌
+█▌▐▖▐▖▙▌▙▖▙▌▌▌▙▌█▌
+```
 
 Alloconda is Zig-first Python extensions with cross-compiled wheels.
 
