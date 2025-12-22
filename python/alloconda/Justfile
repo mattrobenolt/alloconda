@@ -1,0 +1,13 @@
+default:
+    @just --list
+
+fmt:
+    ruff check --select I --fix
+    ruff format
+
+lint:
+    ruff check
+    ty check
+
+clean:
+    rm -rf *.egg-info

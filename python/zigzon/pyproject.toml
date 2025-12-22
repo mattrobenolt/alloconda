@@ -1,7 +1,7 @@
 [project]
-name = "zigadd"
+name = "zigzon"
 version = "0.1.0"
-description = "Add your description here"
+description = "ZON codec powered by Zig"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []

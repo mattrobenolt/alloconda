@@ -1,6 +1,6 @@
 *.so
-/zig-out
-/.zig-cache
+zig-out/
+.zig-cache/
 
 # Python-generated files
 __pycache__/

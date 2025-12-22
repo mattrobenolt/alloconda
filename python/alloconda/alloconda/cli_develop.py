@@ -1,0 +1,107 @@
+import importlib.util
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import click
+
+from .cli_helpers import find_project_dir
+
+
+@click.command()
+@click.option("--release", is_flag=True, help="Build in release mode")
+@click.option("--module", "module_name", help="Override module name (PyInit_*)")
+@click.option(
+    "--lib", "lib_path", type=click.Path(path_type=Path), help="Path to built library"
+)
+@click.option(
+    "--package-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    help="Python package directory to install the extension",
+)
+@click.option(
+    "--ext-suffix",
+    help="Override extension suffix (default from running Python)",
+)
+@click.option("--zig-target", help="Zig target triple for cross builds")
+@click.option("--python-include", help="Python include path for cross builds")
+@click.option("--skip-build", is_flag=True, help="Skip zig build step")
+@click.option("--no-init", is_flag=True, help="Skip __init__.py generation")
+@click.option("--force-init", is_flag=True, help="Overwrite existing __init__.py")
+@click.option(
+    "--project-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    help="Project root containing pyproject.toml",
+)
+@click.option(
+    "--pip-arg",
+    "pip_args",
+    multiple=True,
+    help="Extra argument to pass to pip (repeatable)",
+)
+@click.option("--uv", "use_uv", is_flag=True, help="Use uv pip for editable install")
+def develop(
+    release: bool,
+    module_name: str | None,
+    lib_path: Path | None,
+    package_dir: Path | None,
+    ext_suffix: str | None,
+    zig_target: str | None,
+    python_include: str | None,
+    skip_build: bool,
+    no_init: bool,
+    force_init: bool,
+    project_dir: Path | None,
+    pip_args: tuple[str, ...],
+    use_uv: bool,
+) -> None:
+    """Build and install the project in editable mode."""
+    project_root = project_dir or find_project_dir(Path.cwd()) or Path.cwd()
+
+    has_uv = shutil.which("uv") is not None
+    has_pip = importlib.util.find_spec("pip") is not None
+    if use_uv or (not has_pip and has_uv):
+        cmd = ["uv", "pip", "install", "-e", str(project_root)]
+    elif has_pip:
+        cmd = [sys.executable, "-m", "pip", "install", "-e", str(project_root)]
+    else:
+        raise click.ClickException(
+            "pip is not available; install pip or re-run with --uv."
+        )
+    _add_config_setting(cmd, "release", release)
+    _add_config_setting(cmd, "module-name", module_name)
+    _add_config_setting(cmd, "lib", _path_str(lib_path))
+    _add_config_setting(cmd, "package-dir", _path_str(package_dir))
+    _add_config_setting(cmd, "ext-suffix", ext_suffix)
+    _add_config_setting(cmd, "zig-target", zig_target)
+    _add_config_setting(cmd, "python-include", python_include)
+    _add_config_setting(cmd, "skip-build", skip_build)
+    _add_config_setting(cmd, "no-init", no_init)
+    _add_config_setting(cmd, "force-init", force_init)
+    _add_config_setting(cmd, "project-dir", str(project_root))
+
+    for arg in pip_args:
+        cmd.append(arg)
+
+    click.echo(f"Running: {cmd}")
+    subprocess.run(cmd, check=True, cwd=project_root)
+
+
+def _add_config_setting(cmd: list[str], key: str, value: object) -> None:
+    if isinstance(value, bool):
+        if value:
+            cmd.extend(["--config-settings", f"{key}=true"])
+        return
+    if value is None:
+        return
+    if value == "":
+        cmd.extend(["--config-settings", f"{key}=true"])
+    else:
+        cmd.extend(["--config-settings", f"{key}={value}"])
+
+
+def _path_str(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return str(path)

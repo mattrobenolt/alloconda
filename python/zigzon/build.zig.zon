@@ -1,0 +1,12 @@
+.{
+    .name = .zigzon,
+    .version = "0.1.0",
+    .fingerprint = 0x38a18333e51ee81e,
+    .dependencies = .{
+        .alloconda = .{
+            .path = "../../",
+        },
+    },
+    .minimum_zig_version = "0.15.2",
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

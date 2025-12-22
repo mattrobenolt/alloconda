@@ -1,0 +1,30 @@
+default:
+    @just --list
+
+fmt:
+    ruff check --select I --fix
+    ruff format
+    zig fmt .
+
+lint:
+    zig fmt --check .
+    zlint
+    ruff check
+    ty check
+
+build:
+    zig fetch --save ../../
+    alloconda build
+
+wheel:
+    rm -rf dist
+    alloconda wheel --python-tag cp314 --abi-tag cp314
+    alloconda inspect --wheel dist/*.whl --verify
+
+test:
+    pytest -v tests
+
+clean:
+    rm -rf zig-out
+    rm -rf dist
+    rm zigadd/*.so

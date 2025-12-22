@@ -1,37 +1,41 @@
 {
-  description = "Zig development environment";
+  description = "🐍🦎";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    mattrobenolt.url = "github:mattrobenolt/nixpkgs";
+    mattware = {
+      url = "github:mattrobenolt/nixpkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
-    { nixpkgs
-    , flake-utils
-    , mattrobenolt
-    , ...
+    {
+      nixpkgs,
+      flake-utils,
+      mattware,
+      ...
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ mattrobenolt.overlays.default ];
+          overlays = [ mattware.overlays.default ];
         };
       in
       {
         devShells.default = pkgs.mkShell {
-          venvDir = ".venv";
           packages = with pkgs; [
+            just
             zig_0_15
             zls_0_15
-            zlint
-            uv
-            python313
-            python313Packages.venvShellHook
+            zlint-unstable
             pkg-config
+            python314
+            uv
+            uvShellHook
           ];
         };
       }

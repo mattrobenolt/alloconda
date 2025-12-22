@@ -1,48 +1,34 @@
-import platform
-import shutil
-import subprocess
-import sysconfig
-from pathlib import Path
-
 import click
+
+from .cli_build import build
+from .cli_develop import develop
+from .cli_init import init
+from .cli_inspect import inspect
+from .cli_python import python
+from .cli_wheel import wheel
+from .cli_wheel_all import wheel_all
 
 
 @click.group()
-def main():
+def main() -> None:
+    """\b
+      ▜ ▜          ▌
+    ▀▌▐ ▐ ▛▌▛▘▛▌▛▌▛▌▀▌
+    █▌▐▖▐▖▙▌▙▖▙▌▌▌▙▌█▌
+
+    Alloconda CLI for Zig-based Python extensions.
+    """
     pass
 
-@main.command()
-@click.option("--release", is_flag=True, help="Build in release mode")
-def build(release: bool):
-    cmd = ["zig", "build"]
-    if release:
-        cmd.append("-Doptimize=ReleaseFast")
 
-    click.echo(f"Running: {cmd}")
-    subprocess.run(cmd, check=True)
+main.add_command(build)
+main.add_command(develop)
+main.add_command(init)
+main.add_command(inspect)
+main.add_command(python)
+main.add_command(wheel)
+main.add_command(wheel_all)
 
-    module_name = "zigadd"
-    src = Path.cwd() / "zig-out" / "lib" / f"lib{module_name}.dylib"
-    dst = Path.cwd() / f"{module_name}{get_extension_suffix()}"
-
-    click.echo(f"Renaming {src} -> {dst}")
-    shutil.copy(src, dst)
-
-    click.echo(f"✓ Built {dst}")
-
-def get_so_suffix() -> str:
-    match (p := platform.system()):
-        case "Darwin":
-            return "dylib"
-        case "Linux":
-            return "so"
-        case _:
-            raise Exception(f"Unsupported platform: {p}")
-
-
-
-def get_extension_suffix() -> str:
-    return sysconfig.get_config_var('EXT_SUFFIX')
 
 if __name__ == "__main__":
     main()

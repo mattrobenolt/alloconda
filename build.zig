@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .strip = optimize != .Debug,
+        .link_libc = true,
     });
     mod.addSystemIncludePath(python.include_path);
 
@@ -32,14 +33,57 @@ pub const LibraryOptions = struct {
 
 pub fn addPythonLibrary(b: *std.Build, options: LibraryOptions) *std.Build.Step.Compile {
     const python = options.python orelse pythonOptions(b, .{});
-    const root_module = options.root_module;
+    const user_module = options.root_module;
 
-    root_module.addSystemIncludePath(python.include_path);
+    user_module.link_libc = true;
+    user_module.addSystemIncludePath(python.include_path);
+
+    const entry_source =
+        \\const std = @import("std");
+        \\const user = @import("user");
+        \\
+        \\comptime {
+        \\    if (!@hasDecl(user, "MODULE")) {
+        \\        @compileError("Expected `pub const MODULE = ...` in the root module");
+        \\    }
+        \\
+        \\    const ModuleType = @TypeOf(user.MODULE);
+        \\    if (!@hasField(ModuleType, "name")) {
+        \\        @compileError("`MODULE` must have a `name` field");
+        \\    }
+        \\    if (!@hasDecl(ModuleType, "create")) {
+        \\        @compileError("`MODULE` must define `create()`");
+        \\    }
+        \\}
+        \\
+        \\const ReturnType = @TypeOf(user.MODULE.create());
+        \\
+        \\fn pyInit() callconv(.c) ReturnType {
+        \\    return user.MODULE.create();
+        \\}
+        \\
+        \\comptime {
+        \\    const sym = std.fmt.comptimePrint("PyInit_{s}", .{user.MODULE.name});
+        \\    @export(&pyInit, .{ .name = sym });
+        \\}
+    ;
+
+    const entry_files = b.addWriteFiles();
+    const entry_path = entry_files.add("alloconda_entry.zig", entry_source);
+
+    const entry_module = b.createModule(.{
+        .root_source_file = entry_path,
+        .target = user_module.resolved_target,
+        .optimize = user_module.optimize,
+        .strip = user_module.strip,
+        .link_libc = true,
+    });
+    entry_module.addImport("user", user_module);
 
     const lib = b.addLibrary(.{
         .name = options.name,
         .linkage = .dynamic,
-        .root_module = root_module,
+        .root_module = entry_module,
     });
     lib.linker_allow_shlib_undefined = true;
 
@@ -59,6 +103,17 @@ pub fn pythonOptions(b: *std.Build, options: struct {
         return .{
             .include_path = .{ .cwd_relative = path },
         };
+    }
+
+    if (std.process.getEnvVarOwned(b.allocator, "ALLOCONDA_PYTHON_INCLUDE")) |path| {
+        if (path.len != 0) {
+            return .{
+                .include_path = .{ .cwd_relative = path },
+            };
+        }
+    } else |err| switch (err) {
+        error.EnvironmentVariableNotFound => {},
+        else => @panic("Failed to read ALLOCONDA_PYTHON_INCLUDE"),
     }
 
     const result = std.process.Child.run(.{

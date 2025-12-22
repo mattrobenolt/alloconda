@@ -1,0 +1,376 @@
+import importlib.machinery
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sysconfig
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+import click
+
+
+@dataclass(frozen=True)
+class ProjectMetadata:
+    name: str
+    version: str
+    summary: str | None
+    requires_python: str | None
+    dependencies: list[str]
+
+
+def run_zig_build(
+    release: bool,
+    zig_target: str | None,
+    python_include: str | None,
+    workdir: Path | None = None,
+) -> None:
+    cmd = ["zig", "build"]
+    if release:
+        cmd.append("-Doptimize=ReleaseFast")
+    if zig_target:
+        cmd.append(f"-Dtarget={zig_target}")
+    env = None
+    if python_include:
+        cmd.append(f"-Dpython-include={python_include}")
+        env = os.environ.copy()
+        env["ALLOCONDA_PYTHON_INCLUDE"] = python_include
+    click.echo(f"Running: {cmd}")
+    subprocess.run(cmd, check=True, cwd=workdir, env=env)
+
+
+def get_so_suffix() -> str:
+    match p := platform.system():
+        case "Darwin":
+            return "dylib"
+        case "Linux":
+            return "so"
+        case "Windows":
+            return "dll"
+        case _:
+            raise click.ClickException(f"Unsupported platform: {p}")
+
+
+def get_extension_suffix() -> str:
+    suffixes = importlib.machinery.EXTENSION_SUFFIXES
+    if not suffixes:
+        raise click.ClickException("Could not determine extension suffixes")
+    return suffixes[0]
+
+
+def resolve_extension_suffix(ext_suffix: str | None) -> str:
+    return ext_suffix or get_extension_suffix()
+
+
+def resolve_library_path(lib_path: Path | None, base_dir: Path | None = None) -> Path:
+    base_dir = base_dir or Path.cwd()
+    if lib_path:
+        if not lib_path.exists():
+            raise click.ClickException(f"Library not found: {lib_path}")
+        return lib_path
+
+    lib_dir = base_dir / "zig-out" / "lib"
+    if not lib_dir.is_dir():
+        raise click.ClickException(f"Missing build output directory: {lib_dir}")
+
+    suffix = f".{get_so_suffix()}"
+    libs = sorted(p for p in lib_dir.iterdir() if p.is_file() and p.suffix == suffix)
+    if not libs:
+        raise click.ClickException(f"No libraries found in {lib_dir}")
+    if len(libs) > 1:
+        names = ", ".join(p.name for p in libs)
+        raise click.ClickException(f"Multiple libraries found in {lib_dir}: {names}")
+    return libs[0]
+
+
+def detect_module_name(lib_path: Path) -> str:
+    output = try_nm(lib_path)
+    matches = sorted(set(re.findall(r"PyInit_[A-Za-z0-9_]+", output)))
+    if not matches:
+        raise click.ClickException(f"No PyInit_* symbols found in {lib_path}")
+    if len(matches) > 1:
+        names = ", ".join(matches)
+        raise click.ClickException(
+            f"Multiple PyInit_* symbols found in {lib_path}: {names}"
+        )
+    return matches[0].removeprefix("PyInit_")
+
+
+def try_nm(lib_path: Path) -> str:
+    commands = [
+        ["nm", "-g", str(lib_path)],
+        ["nm", "-gU", str(lib_path)],
+        ["nm", "-D", str(lib_path)],
+        ["objdump", "-t", str(lib_path)],
+    ]
+    for cmd in commands:
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            continue
+        if result.stdout:
+            return result.stdout
+    raise click.ClickException(
+        "Could not inspect library symbols (nm/objdump not available)"
+    )
+
+
+def resolve_package_dir(package_dir: Path | None, base_dir: Path | None = None) -> Path:
+    base_dir = base_dir or Path.cwd()
+    if package_dir:
+        if not package_dir.is_dir():
+            raise click.ClickException(f"Package directory not found: {package_dir}")
+        return package_dir
+
+    project_name = read_project_name(base_dir)
+    candidates: list[Path] = []
+    for base in (base_dir, base_dir / "src"):
+        if project_name:
+            candidate = base / project_name
+            if candidate.is_dir():
+                candidates.append(candidate)
+
+        if base.is_dir():
+            for child in base.iterdir():
+                if not child.is_dir():
+                    continue
+                if child.name in {".zig-cache", "zig-out", "src", ".git"}:
+                    continue
+                if (child / "__init__.py").is_file():
+                    candidates.append(child)
+
+    unique = []
+    for candidate in candidates:
+        if candidate not in unique:
+            unique.append(candidate)
+
+    if not unique:
+        raise click.ClickException(
+            "Could not determine package directory; use --package-dir"
+        )
+    if len(unique) > 1:
+        names = ", ".join(str(p) for p in unique)
+        raise click.ClickException(
+            f"Multiple package dirs found; use --package-dir: {names}"
+        )
+    return unique[0]
+
+
+def read_project_name(root: Path) -> str | None:
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():
+        return None
+    data = tomllib.loads(pyproject.read_text())
+    return data.get("project", {}).get("name")
+
+
+def find_project_dir(start: Path) -> Path | None:
+    for path in [start, *start.parents]:
+        if (path / "pyproject.toml").is_file():
+            return path
+    return None
+
+
+def read_project_metadata(
+    project_dir: Path | None, package_dir: Path | None
+) -> ProjectMetadata:
+    root = project_dir or (find_project_dir(package_dir or Path.cwd()))
+    if not root:
+        name = package_dir.name if package_dir else "alloconda-extension"
+        return ProjectMetadata(
+            name=name,
+            version="0.0.0",
+            summary=None,
+            requires_python=None,
+            dependencies=[],
+        )
+
+    data = tomllib.loads((root / "pyproject.toml").read_text())
+    project = data.get("project", {})
+    name = project.get("name") or (
+        package_dir.name if package_dir else "alloconda-extension"
+    )
+    version = project.get("version", "0.0.0")
+    summary = project.get("description")
+    requires_python = project.get("requires-python")
+    dependencies = list(project.get("dependencies", []))
+    return ProjectMetadata(
+        name=name,
+        version=version,
+        summary=summary,
+        requires_python=requires_python,
+        dependencies=dependencies,
+    )
+
+
+def normalize_dist_name(name: str) -> str:
+    return re.sub(r"[-.]+", "_", name)
+
+
+def default_platform_tag() -> str:
+    tag = sysconfig.get_platform()
+    return tag.replace("-", "_").replace(".", "_")
+
+
+def resolve_arch(arch: str | None) -> str:
+    machine = arch.lower() if arch else platform.machine().lower()
+    return {
+        "amd64": "x86_64",
+        "x86_64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+        "armv7l": "armv7l",
+    }.get(machine, machine)
+
+
+def resolve_platform_tag(
+    platform_tag: str | None,
+    manylinux: str | None,
+    musllinux: str | None,
+    arch: str | None,
+) -> str:
+    if platform_tag and (manylinux or musllinux):
+        raise click.ClickException(
+            "Use either --platform-tag or --manylinux/--musllinux"
+        )
+    if manylinux:
+        return f"{normalize_manylinux(manylinux)}_{resolve_arch(arch)}"
+    if musllinux:
+        return f"{normalize_musllinux(musllinux)}_{resolve_arch(arch)}"
+    return platform_tag or default_platform_tag()
+
+
+def resolve_pbs_target(
+    pbs_target: str | None,
+    platform_tag: str | None,
+    manylinux: str | None,
+    musllinux: str | None,
+    arch: str | None,
+) -> str:
+    if pbs_target:
+        return pbs_target
+
+    resolved_arch = resolve_arch(arch)
+    plat = platform_tag or ""
+
+    if manylinux or plat.startswith("manylinux") or plat.startswith("linux"):
+        return f"{resolved_arch}-unknown-linux-gnu"
+    if musllinux or plat.startswith("musllinux"):
+        return f"{resolved_arch}-unknown-linux-musl"
+    if plat.startswith("macosx") or platform.system() == "Darwin":
+        return f"{resolved_arch}-apple-darwin"
+    if plat.startswith("win") or platform.system() == "Windows":
+        if resolved_arch in {"aarch64", "arm64"}:
+            return "aarch64-pc-windows-msvc"
+        return "x86_64-pc-windows-msvc"
+
+    raise click.ClickException("Unable to infer PBS target; use --pbs-target")
+
+
+def resolve_zig_target(
+    zig_target: str | None,
+    manylinux: str | None,
+    musllinux: str | None,
+    arch: str | None,
+) -> str | None:
+    if zig_target:
+        return zig_target
+    resolved_arch = resolve_arch(arch)
+    if manylinux:
+        glibc = manylinux_glibc_version(manylinux)
+        if not glibc:
+            raise click.ClickException(f"Unsupported manylinux value: {manylinux}")
+        return f"{resolved_arch}-linux-gnu.{glibc}"
+    if musllinux:
+        return f"{resolved_arch}-linux-musl"
+    return None
+
+
+def manylinux_glibc_version(value: str) -> str | None:
+    normalized = normalize_manylinux(value)
+    if normalized.startswith("manylinux_"):
+        return normalized.split("_", 1)[1].replace("_", ".")
+    if normalized == "manylinux2014":
+        return "2.17"
+    if normalized == "manylinux2010":
+        return "2.12"
+    if normalized == "manylinux1":
+        return "2.5"
+    return None
+
+
+def normalize_manylinux(value: str) -> str:
+    value = value.strip()
+    if value.startswith("manylinux"):
+        return value
+    if value.isdigit():
+        return f"manylinux{value}"
+    if value.startswith("2_"):
+        return f"manylinux_{value}"
+    raise click.ClickException(f"Unrecognized manylinux value: {value}")
+
+
+def normalize_musllinux(value: str) -> str:
+    value = value.strip()
+    if value.startswith("musllinux"):
+        return value
+    if value.startswith("1_"):
+        return f"musllinux_{value}"
+    raise click.ClickException(f"Unrecognized musllinux value: {value}")
+
+
+def write_init_py(package_dir: Path, module_name: str, force: bool) -> None:
+    init_path = package_dir / "__init__.py"
+    content = init_path.read_text() if init_path.exists() else ""
+
+    if content.strip() and "Generated by alloconda" not in content and not force:
+        click.echo(f"Skipping __init__.py (use --force-init to overwrite): {init_path}")
+        return
+
+    init_body = f"""# Generated by alloconda
+from . import {module_name} as _mod
+from .{module_name} import *  # noqa: F403
+
+__doc__ = _mod.__doc__
+
+if hasattr(_mod, "__all__"):
+    __all__ = _mod.__all__
+"""
+    init_path.write_text(init_body)
+
+
+def build_extension(
+    *,
+    release: bool,
+    module_name: str | None,
+    lib_path: Path | None,
+    package_dir: Path | None,
+    ext_suffix: str | None,
+    zig_target: str | None,
+    python_include: str | None,
+    no_init: bool,
+    force_init: bool,
+    skip_build: bool = False,
+    workdir: Path | None = None,
+) -> Path:
+    build_root = workdir or Path.cwd()
+    if not skip_build:
+        run_zig_build(release, zig_target, python_include, workdir=build_root)
+
+    lib_path = resolve_library_path(lib_path, base_dir=build_root)
+    if module_name is None:
+        module_name = detect_module_name(lib_path)
+
+    package_dir = resolve_package_dir(package_dir, base_dir=build_root)
+    suffix = resolve_extension_suffix(ext_suffix)
+    dst = package_dir / f"{module_name}{suffix}"
+
+    click.echo(f"Copying {lib_path} -> {dst}")
+    shutil.copy2(lib_path, dst)
+
+    if not no_init:
+        write_init_py(package_dir, module_name, force_init)
+
+    return dst

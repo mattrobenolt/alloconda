@@ -4,7 +4,7 @@
     .dependencies = .{
         .alloconda = .{
             .url = "../../",
-            .hash = "alloconda-0.0.0-tRxrxssMAACMZrMYUisBF8tgVSk9FWQKiCLjANGZo9Bv",
+            .hash = "alloconda-0.0.0-tRxrxnanAACZuvnZzTTvO2kiecs6sBZtdSNm227GPyTK",
         },
     },
     .minimum_zig_version = "0.15.2",
