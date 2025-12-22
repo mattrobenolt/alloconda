@@ -22,6 +22,7 @@ from .cli_helpers import (
     resolve_platform_tag,
     resolve_zig_target,
     run_zig_build,
+    should_include_path,
     write_init_py,
 )
 from .pbs import cache_root, find_cached_entry
@@ -36,6 +37,8 @@ class WheelOptions:
     out_dir: Path
     no_init: bool
     force_init: bool
+    include: list[str] | None
+    exclude: list[str] | None
 
 
 def build_wheel(
@@ -60,6 +63,8 @@ def build_wheel(
     no_init: bool,
     force_init: bool,
     skip_build: bool,
+    include: list[str] | None,
+    exclude: list[str] | None,
 ) -> Path:
     python_include = None
     if python_version:
@@ -123,6 +128,8 @@ def build_wheel(
         out_dir=out_dir or (Path.cwd() / "dist"),
         no_init=no_init,
         force_init=force_init,
+        include=include,
+        exclude=exclude,
     )
     wheel_opts.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -181,7 +188,7 @@ def assemble_wheel(
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp)
         staged_pkg = staging / package_dir.name
-        copy_package_tree(package_dir, staged_pkg)
+        copy_package_tree(package_dir, staged_pkg, opts.include, opts.exclude)
 
         ext_path = staged_pkg / f"{module_name}{opts.ext_suffix}"
         shutil.copy2(lib_path, ext_path)
@@ -205,13 +212,25 @@ def assemble_wheel(
     return wheel_path
 
 
-def copy_package_tree(src: Path, dst: Path) -> None:
-    shutil.copytree(
-        src,
-        dst,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
-        dirs_exist_ok=True,
-    )
+def copy_package_tree(
+    src: Path,
+    dst: Path,
+    include: list[str] | None,
+    exclude: list[str] | None,
+) -> None:
+    for path in sorted(src.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(src).as_posix()
+        if "__pycache__" in path.parts:
+            continue
+        if path.suffix in {".pyc", ".pyo"}:
+            continue
+        if not should_include_path(rel, include, exclude):
+            continue
+        dest_path = dst / rel
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dest_path)
 
 
 def format_metadata(metadata: ProjectMetadata) -> str:
@@ -222,6 +241,10 @@ def format_metadata(metadata: ProjectMetadata) -> str:
     ]
     if metadata.summary:
         lines.append(f"Summary: {metadata.summary}")
+    if metadata.license:
+        lines.append(f"License: {metadata.license}")
+    for classifier in metadata.classifiers:
+        lines.append(f"Classifier: {classifier}")
     if metadata.requires_python:
         lines.append(f"Requires-Python: {metadata.requires_python}")
     for dep in metadata.dependencies:

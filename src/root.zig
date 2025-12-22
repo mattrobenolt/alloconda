@@ -7,6 +7,13 @@ pub const c = ffi.c;
 pub const PyObject = ffi.c.PyObject;
 pub const Py_ssize_t = ffi.c.Py_ssize_t;
 
+const DefaultTypeStorage = extern struct {
+    head: c.PyObject,
+    dict: ?*c.PyObject,
+};
+const DefaultDictOffset: c.Py_ssize_t = @offsetOf(DefaultTypeStorage, "dict");
+
+const py = @This();
 /// Convenience arena allocator backed by the CPython allocator.
 pub fn arenaAllocator() std.heap.ArenaAllocator {
     return std.heap.ArenaAllocator.init(allocator);
@@ -84,9 +91,9 @@ pub const Class = struct {
     fn create(self: *const Class) ?*c.PyObject {
         var spec = c.PyType_Spec{
             .name = @ptrCast(self.name.ptr),
-            .basicsize = @intCast(@sizeOf(c.PyObject)),
+            .basicsize = @intCast(classBasicSize()),
             .itemsize = 0,
-            .flags = c.Py_TPFLAGS_DEFAULT,
+            .flags = classFlags(),
             .slots = @constCast(self.slots),
         };
         return c.PyType_FromSpec(&spec);
@@ -128,6 +135,15 @@ fn classSlots(
     comptime doc: ?[:0]const u8,
 ) [*c]const c.PyType_Slot {
     if (doc) |doc_text| {
+        if (@hasDecl(c, "Py_tp_dictoffset")) {
+            return @ptrCast(&[_]c.PyType_Slot{
+                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+                .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+                .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
+                .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
+                .{ .slot = 0, .pfunc = null },
+            });
+        }
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
             .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
@@ -136,11 +152,34 @@ fn classSlots(
         });
     }
 
+    if (@hasDecl(c, "Py_tp_dictoffset")) {
+        return @ptrCast(&[_]c.PyType_Slot{
+            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+            .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+            .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
+            .{ .slot = 0, .pfunc = null },
+        });
+    }
     return @ptrCast(&[_]c.PyType_Slot{
         .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
         .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
         .{ .slot = 0, .pfunc = null },
     });
+}
+
+fn classFlags() c_uint {
+    var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
+    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+        flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
+    }
+    return flags;
+}
+
+fn classBasicSize() usize {
+    if (@hasDecl(c, "Py_tp_dictoffset")) {
+        return @sizeOf(DefaultTypeStorage);
+    }
+    return @sizeOf(c.PyObject);
 }
 
 /// Wrapper for a Python object with ownership tracking.
@@ -173,6 +212,66 @@ pub const Object = struct {
     /// Check if the object is callable.
     pub fn isCallable(self: Object) bool {
         return c.PyCallable_Check(self.ptr) != 0;
+    }
+
+    /// Check if the object is None.
+    pub fn isNone(self: Object) bool {
+        return py.isNone(self.ptr);
+    }
+
+    /// Check if the object is a Unicode string.
+    pub fn isUnicode(self: Object) bool {
+        return py.isUnicode(self.ptr);
+    }
+
+    /// Check if the object is a bytes object.
+    pub fn isBytes(self: Object) bool {
+        return py.isBytes(self.ptr);
+    }
+
+    /// Check if the object is a bool.
+    pub fn isBool(self: Object) bool {
+        return py.isBool(self.ptr);
+    }
+
+    /// Check if the object is an int.
+    pub fn isLong(self: Object) bool {
+        return py.isLong(self.ptr);
+    }
+
+    /// Check if the object is a float.
+    pub fn isFloat(self: Object) bool {
+        return py.isFloat(self.ptr);
+    }
+
+    /// Check if the object is a list.
+    pub fn isList(self: Object) bool {
+        return py.isList(self.ptr);
+    }
+
+    /// Check if the object is a tuple.
+    pub fn isTuple(self: Object) bool {
+        return py.isTuple(self.ptr);
+    }
+
+    /// Check if the object is a dict.
+    pub fn isDict(self: Object) bool {
+        return py.isDict(self.ptr);
+    }
+
+    /// Borrow the UTF-8 slice for a Unicode object.
+    pub fn unicodeSlice(self: Object) ?[]const u8 {
+        return py.unicodeSlice(self.ptr);
+    }
+
+    /// Borrow the byte slice for a bytes object.
+    pub fn bytesSlice(self: Object) ?[]const u8 {
+        return py.bytesSlice(self.ptr);
+    }
+
+    /// Convert the object to truthiness.
+    pub fn isTrue(self: Object) ?bool {
+        return py.objectIsTrue(self.ptr);
     }
 
     /// Call with no arguments.
@@ -496,6 +595,128 @@ pub const Tuple = struct {
     }
 };
 
+/// Convert a Python list into an owned slice.
+pub fn listToSlice(comptime T: type, gpa: std.mem.Allocator, list: List) ?[]T {
+    const size = list.len() orelse return null;
+    const buffer = gpa.alloc(T, size) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    var i: usize = 0;
+    while (i < size) : (i += 1) {
+        const item = list.get(i) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        const value = fromPy(T, item.ptr) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        buffer[i] = value;
+    }
+    return buffer;
+}
+
+/// Convert a Python tuple into an owned slice.
+pub fn tupleToSlice(comptime T: type, gpa: std.mem.Allocator, tuple: Tuple) ?[]T {
+    const size = tuple.len() orelse return null;
+    const buffer = gpa.alloc(T, size) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    var i: usize = 0;
+    while (i < size) : (i += 1) {
+        const item = tuple.get(i) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        const value = fromPy(T, item.ptr) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        buffer[i] = value;
+    }
+    return buffer;
+}
+
+/// Convert a Python dict into an owned slice of key/value pairs.
+pub fn dictToEntries(
+    comptime K: type,
+    comptime V: type,
+    gpa: std.mem.Allocator,
+    dict: Dict,
+) ?[]struct { key: K, value: V } {
+    const size = dict.len() orelse return null;
+    const Entry = struct { key: K, value: V };
+    const buffer = gpa.alloc(Entry, size) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    var iter = dict.iter();
+    var i: usize = 0;
+    while (iter.next()) |entry| {
+        if (i >= size) break;
+        const key = fromPy(K, entry.key.ptr) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        const value = fromPy(V, entry.value.ptr) orelse {
+            gpa.free(buffer);
+            return null;
+        };
+        buffer[i] = .{ .key = key, .value = value };
+        i += 1;
+    }
+    return buffer[0..i];
+}
+
+/// Convert a Zig slice into a Python list.
+pub fn toList(comptime T: type, values: []const T) ?List {
+    var list = List.init(values.len) orelse return null;
+    var i: usize = 0;
+    while (i < values.len) : (i += 1) {
+        if (!list.set(i, values[i])) {
+            list.deinit();
+            return null;
+        }
+    }
+    return list;
+}
+
+/// Convert a Zig slice into a Python tuple.
+pub fn toTuple(comptime T: type, values: []const T) ?Tuple {
+    const tuple_obj = c.PyTuple_New(@intCast(values.len)) orelse return null;
+    var i: usize = 0;
+    while (i < values.len) : (i += 1) {
+        const item_obj = toPy(T, values[i]) orelse {
+            c.Py_DecRef(tuple_obj);
+            return null;
+        };
+        if (c.PyTuple_SetItem(tuple_obj, @intCast(i), item_obj) != 0) {
+            c.Py_DecRef(item_obj);
+            c.Py_DecRef(tuple_obj);
+            return null;
+        }
+    }
+    return Tuple.owned(tuple_obj);
+}
+
+/// Convert a Zig slice of entries into a Python dict.
+pub fn toDict(
+    comptime K: type,
+    comptime V: type,
+    entries: []const struct { key: K, value: V },
+) ?Dict {
+    var dict = Dict.init() orelse return null;
+    for (entries) |entry| {
+        if (!dict.setItem(entry.key, entry.value)) {
+            dict.deinit();
+            return null;
+        }
+    }
+    return dict;
+}
+
 /// Return true if the object is Python None.
 pub fn isNone(obj: *c.PyObject) bool {
     return obj == pyNone();
@@ -637,6 +858,7 @@ pub const Exception = enum {
     TypeError,
     ValueError,
     RuntimeError,
+    MemoryError,
     OverflowError,
     ZeroDivisionError,
     AttributeError,
@@ -681,6 +903,7 @@ fn exceptionPtr(comptime kind: Exception) *c.PyObject {
         .TypeError => c.PyExc_TypeError,
         .ValueError => c.PyExc_ValueError,
         .RuntimeError => c.PyExc_RuntimeError,
+        .MemoryError => c.PyExc_MemoryError,
         .OverflowError => c.PyExc_OverflowError,
         .ZeroDivisionError => c.PyExc_ZeroDivisionError,
         .AttributeError => c.PyExc_AttributeError,
@@ -1141,6 +1364,14 @@ fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
         return List.borrowed(obj.?);
     }
 
+    if (T == Tuple) {
+        if (c.PyTuple_Check(obj) == 0) {
+            raise(.TypeError, "expected tuple");
+            return null;
+        }
+        return Tuple.borrowed(obj.?);
+    }
+
     if (T == Dict) {
         if (c.PyDict_Check(obj) == 0) {
             raise(.TypeError, "expected dict");
@@ -1230,6 +1461,13 @@ fn toPy(comptime T: type, value: T) ?*c.PyObject {
     }
 
     if (T == List) {
+        if (!value.obj.owns_ref) {
+            c.Py_IncRef(value.obj.ptr);
+        }
+        return value.obj.ptr;
+    }
+
+    if (T == Tuple) {
         if (!value.obj.owns_ref) {
             c.Py_IncRef(value.obj.ptr);
         }

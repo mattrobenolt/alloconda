@@ -1,6 +1,9 @@
 default:
     @just --list
 
+sync:
+    uv sync --all-packages
+
 lint:
     zig fmt --check .
     zlint
@@ -33,3 +36,19 @@ fmt-all:
     cd python/alloconda && just fmt
     cd python/zigadd && just fmt
     cd python/zigzon && just fmt
+
+docs:
+    mdbook build
+
+docs-serve:
+    mdbook serve
+
+publish:
+    uv build --package alloconda --clear
+    twine check --strict dist/*
+    twine upload --repository alloconda dist/*
+
+clean:
+    rm -rf dist/
+    rm -rf zig-out/
+    rm -rf .zig-cache/

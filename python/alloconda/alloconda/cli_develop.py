@@ -6,7 +6,13 @@ from pathlib import Path
 
 import click
 
-from .cli_helpers import find_project_dir
+from .cli_helpers import (
+    config_bool,
+    config_path,
+    config_value,
+    find_project_dir,
+    read_tool_alloconda,
+)
 
 
 @click.command()
@@ -58,6 +64,17 @@ def develop(
 ) -> None:
     """Build and install the project in editable mode."""
     project_root = project_dir or find_project_dir(Path.cwd()) or Path.cwd()
+    config = read_tool_alloconda(project_root, package_dir)
+
+    module_name = module_name or config_value(config, "module-name")
+    lib_path = lib_path or config_path(config, project_root, "lib")
+    package_dir = package_dir or config_path(config, project_root, "package-dir")
+    ext_suffix = ext_suffix or config_value(config, "ext-suffix")
+    zig_target = zig_target or config_value(config, "zig-target")
+    python_include = python_include or config_value(config, "python-include")
+    skip_build = skip_build or config_bool(config, "skip-build")
+    no_init = no_init or config_bool(config, "no-init")
+    force_init = force_init or config_bool(config, "force-init")
 
     has_uv = shutil.which("uv") is not None
     has_pip = importlib.util.find_spec("pip") is not None

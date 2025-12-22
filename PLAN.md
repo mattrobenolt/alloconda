@@ -14,6 +14,7 @@ small and pragmatic; update as we learn.
 - CLI: build, wheel, wheel-all, inspect, develop, python header fetch.
 - PEP 517 build backend for `pyproject.toml` projects.
 - Example modules `python/zigadd` and `python/zigzon` with pytest + type stubs.
+- mdBook documentation scaffold (`docs/` + `book.toml`).
 
 ## Near-term ideas
 
@@ -33,4 +34,4 @@ small and pragmatic; update as we learn.
 - Custom class storage (struct-backed types).
 - Lifetime-safe `Object` wrappers across threads (opt-in).
 - Multi-phase module init (PEP 489) support.
-- Docs + cookbook with patterns and caveats.
+- Docs + cookbook with patterns and caveats (content expansion).

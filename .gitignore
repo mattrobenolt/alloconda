@@ -9,6 +9,7 @@ build/
 dist/
 wheels/
 *.egg-info
+book/
 
 # Virtual environments
 .venv

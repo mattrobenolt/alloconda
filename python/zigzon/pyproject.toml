@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "ZON codec powered by Zig"
 readme = "README.md"
 requires-python = ">=3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+classifiers = [
+    "Private :: Do Not Upload",
+]
 dependencies = []
 
 [project.optional-dependencies]

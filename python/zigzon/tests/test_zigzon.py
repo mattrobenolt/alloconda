@@ -44,3 +44,14 @@ def test_float_inf_nan() -> None:
     assert value[0] == float("inf")
     assert value[1] == float("-inf")
     assert math.isnan(value[2])
+
+
+def test_document_class() -> None:
+    doc = zigzon.ZonDocument()
+    doc.set_text('.{ .name = "zig" }')
+    assert doc.get_text() == '.{ .name = "zig" }'
+    assert doc.loads() == {"name": "zig"}
+
+    doc.set_value({"a": 1, "b": 2})
+    text = doc.dumps()
+    assert zigzon.loads(text) == {"a": 1, "b": 2}

@@ -51,6 +51,16 @@ Flags:
 - `--module` to override `PyInit_*` detection.
 - `--package-dir` to pick a target package directory.
 
+## Documentation
+
+The mdBook source lives in `docs/` and is configured by `book.toml`.
+
+```bash
+mdbook build
+# or
+mdbook serve
+```
+
 ## Repo layout
 
 - `src/root.zig`: core alloconda API.

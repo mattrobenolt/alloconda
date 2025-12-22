@@ -113,7 +113,7 @@ def init(
         f"""\
         .{{
             .name = .{package_name},
-            .version = "0.1.0",
+            .version = "0.0.1a1",
             .fingerprint = {fingerprint_hex},
             .dependencies = .{{
                 .alloconda = .{{

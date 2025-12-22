@@ -20,4 +20,8 @@ with open("data.zon", "w", encoding="utf-8") as handle:
 with open("data.zon", "r", encoding="utf-8") as handle:
     value = zigzon.load(handle)
     print(value)
+
+doc = zigzon.ZonDocument()
+doc.set_text('.{ .hello = "world" }')
+print(doc.loads())
 ```

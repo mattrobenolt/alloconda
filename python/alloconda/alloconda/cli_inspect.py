@@ -7,6 +7,7 @@ import click
 from .cli_helpers import (
     detect_module_name,
     get_extension_suffix,
+    normalize_dist_name,
     resolve_library_path,
     resolve_package_dir,
 )
@@ -84,19 +85,34 @@ def inspect_library(
 
 
 def inspect_wheel(wheel_path: Path, verify: bool) -> dict[str, object]:
+    errors: list[str] = []
     with zipfile.ZipFile(wheel_path) as zf:
         names = zf.namelist()
 
-    dist_info_files = [
-        name
-        for name in names
-        if name.endswith(
-            (".dist-info/WHEEL", ".dist-info/METADATA", ".dist-info/RECORD")
+        dist_info_dirs = sorted(
+            {
+                name.split("/", 1)[0]
+                for name in names
+                if name.endswith(".dist-info/WHEEL")
+                or name.endswith(".dist-info/METADATA")
+                or name.endswith(".dist-info/RECORD")
+            }
         )
-    ]
-    extension_files = [name for name in names if name.endswith(EXTENSION_ENDINGS)]
+        dist_info_dir = dist_info_dirs[0] if len(dist_info_dirs) == 1 else None
+        if not dist_info_dirs:
+            errors.append("missing .dist-info directory")
+        elif len(dist_info_dirs) > 1:
+            errors.append("multiple .dist-info directories found")
 
-    if verify:
+        dist_info_files = [
+            name
+            for name in names
+            if name.endswith(
+                (".dist-info/WHEEL", ".dist-info/METADATA", ".dist-info/RECORD")
+            )
+        ]
+        extension_files = [name for name in names if name.endswith(EXTENSION_ENDINGS)]
+
         required = {".dist-info/WHEEL", ".dist-info/METADATA", ".dist-info/RECORD"}
         missing = [
             suffix
@@ -104,14 +120,110 @@ def inspect_wheel(wheel_path: Path, verify: bool) -> dict[str, object]:
             if not any(name.endswith(suffix) for name in names)
         ]
         if missing:
-            raise click.ClickException(f"Wheel missing files: {', '.join(missing)}")
+            errors.append(f"missing files: {', '.join(missing)}")
         if not extension_files:
-            raise click.ClickException("Wheel missing extension module")
+            errors.append("missing extension module")
+
+        metadata = None
+        wheel_tags: list[str] = []
+        if dist_info_dir:
+            metadata_text = _read_zip_text(zf, f"{dist_info_dir}/METADATA")
+            wheel_text = _read_zip_text(zf, f"{dist_info_dir}/WHEEL")
+            if metadata_text is None:
+                errors.append("missing METADATA file")
+            else:
+                metadata = parse_metadata(metadata_text)
+
+            if wheel_text is None:
+                errors.append("missing WHEEL file")
+            else:
+                wheel_tags = parse_wheel_tags(wheel_text)
+                if not wheel_tags:
+                    errors.append("WHEEL file has no Tag entries")
+
+        filename_tags = parse_wheel_filename(wheel_path.name)
+        if filename_tags and wheel_tags:
+            expected_tag = (
+                f"{filename_tags['python_tag']}-"
+                f"{filename_tags['abi_tag']}-"
+                f"{filename_tags['platform_tag']}"
+            )
+            if expected_tag not in wheel_tags:
+                errors.append("filename tag missing from WHEEL tags")
+
+        if metadata and dist_info_dir:
+            name = metadata.get("Name")
+            version = metadata.get("Version")
+            if name and version:
+                expected = f"{normalize_dist_name(name)}-{version}.dist-info"
+                if dist_info_dir != expected:
+                    errors.append("dist-info directory does not match metadata")
+
+    if verify and errors:
+        raise click.ClickException("; ".join(errors))
 
     return {
         "wheel": str(wheel_path),
+        "dist_info_dir": dist_info_dir,
         "dist_info_files": dist_info_files,
         "extension_files": extension_files,
+        "metadata": metadata,
+        "wheel_tags": wheel_tags,
+        "filename_tags": filename_tags,
+        "valid": not errors,
+        "errors": errors,
+    }
+
+
+def _read_zip_text(zf: zipfile.ZipFile, name: str) -> str | None:
+    try:
+        return zf.read(name).decode("utf-8")
+    except KeyError:
+        return None
+
+
+def parse_metadata(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    current_key: str | None = None
+    for line in text.splitlines():
+        if not line.strip():
+            current_key = None
+            continue
+        if line[0].isspace() and current_key:
+            values[current_key] += "\n" + line.strip()
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        values[key.strip()] = value.strip()
+        current_key = key.strip()
+    return values
+
+
+def parse_wheel_tags(text: str) -> list[str]:
+    tags = []
+    for line in text.splitlines():
+        if line.startswith("Tag:"):
+            tags.append(line.split(":", 1)[1].strip())
+    return tags
+
+
+def parse_wheel_filename(filename: str) -> dict[str, str]:
+    if not filename.endswith(".whl"):
+        return {}
+    stem = filename[:-4]
+    parts = stem.split("-")
+    if len(parts) < 5:
+        return {}
+    python_tag, abi_tag, platform_tag = parts[-3:]
+    version = parts[-4]
+    name = "-".join(parts[:-4])
+    return {
+        "distribution": name,
+        "version": version,
+        "python_tag": python_tag,
+        "abi_tag": abi_tag,
+        "platform_tag": platform_tag,
     }
 
 
@@ -125,6 +237,10 @@ def print_human(data: dict[str, object]) -> None:
         dist_count = len(dist_info_files) if isinstance(dist_info_files, list) else 0
         click.echo(f"extension_files: {ext_count}")
         click.echo(f"dist_info_files: {dist_count}")
+        if data.get("valid") is False:
+            errors = data.get("errors")
+            if isinstance(errors, list) and errors:
+                click.echo(f"validation_errors: {len(errors)}")
         return
 
     click.echo(f"library: {data.get('library')}")

@@ -8,10 +8,13 @@ from typing import Any
 
 from .cli_helpers import (
     build_extension,
+    config_list,
     find_project_dir,
     normalize_dist_name,
     read_project_metadata,
+    read_tool_alloconda,
     resolve_package_dir,
+    should_include_path,
 )
 from .wheel_builder import (
     build_wheel as build_wheel_impl,
@@ -30,6 +33,8 @@ def build_wheel(
 ) -> str:
     settings = _normalize_config_settings(config_settings)
     project_dir = _resolve_project_dir(settings.get("project-dir"))
+    tool_config = read_tool_alloconda(project_dir)
+    settings = _merge_config(tool_config, settings)
     wheel_path = build_wheel_impl(
         release=_bool_setting(settings, "release", False),
         zig_target=settings.get("zig-target"),
@@ -51,6 +56,8 @@ def build_wheel(
         no_init=_bool_setting(settings, "no-init", False),
         force_init=_bool_setting(settings, "force-init", False),
         skip_build=_bool_setting(settings, "skip-build", False),
+        include=config_list(settings, "include"),
+        exclude=config_list(settings, "exclude"),
     )
     return wheel_path.name
 
@@ -62,6 +69,8 @@ def build_editable(
 ) -> str:
     settings = _normalize_config_settings(config_settings)
     project_dir = _resolve_project_dir(settings.get("project-dir"))
+    tool_config = read_tool_alloconda(project_dir)
+    settings = _merge_config(tool_config, settings)
     package_dir = _resolve_package_dir(settings.get("package-dir"), project_dir)
 
     build_extension(
@@ -102,6 +111,8 @@ def prepare_metadata_for_build_wheel(
 ) -> str:
     settings = _normalize_config_settings(config_settings)
     project_dir = _resolve_project_dir(settings.get("project-dir"))
+    tool_config = read_tool_alloconda(project_dir)
+    settings = _merge_config(tool_config, settings)
     package_dir = _resolve_package_dir(settings.get("package-dir"), project_dir)
     metadata = read_project_metadata(project_dir, package_dir)
     dist_name = normalize_dist_name(metadata.name)
@@ -121,19 +132,25 @@ def build_sdist(
 ) -> str:
     settings = _normalize_config_settings(config_settings)
     project_dir = _resolve_project_dir(settings.get("project-dir"))
+    tool_config = read_tool_alloconda(project_dir)
+    settings = _merge_config(tool_config, settings)
     metadata = read_project_metadata(project_dir, None)
     dist_name = normalize_dist_name(metadata.name)
     archive_name = f"{dist_name}-{metadata.version}.tar.gz"
     archive_path = Path(sdist_directory) / archive_name
     root = project_dir
+    include = config_list(settings, "include")
+    exclude = config_list(settings, "exclude")
 
     with tarfile.open(archive_path, "w:gz") as tf:
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
+            rel = path.relative_to(root).as_posix()
             if _is_sdist_ignored(path):
                 continue
-            rel = path.relative_to(root).as_posix()
+            if not should_include_path(rel, include, exclude):
+                continue
             tf.add(path, arcname=f"{dist_name}-{metadata.version}/{rel}")
 
     return archive_path.name
@@ -212,8 +229,14 @@ def _normalize_config_settings(
         return {}
     normalized = {}
     for key, value in config_settings.items():
-        normalized[key.lstrip("-")] = value
+        normalized[key.lstrip("-").replace("_", "-")] = value
     return normalized
+
+
+def _merge_config(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    merged.update(overrides)
+    return merged
 
 
 def _bool_setting(settings: dict[str, Any], key: str, default: bool) -> bool:

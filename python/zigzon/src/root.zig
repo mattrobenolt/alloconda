@@ -11,6 +11,26 @@ const PyObject = py.PyObject;
 
 const CallError = error{ PythonError, OutOfMemory, WriteFailed };
 
+const ZonDocument = py.class("ZonDocument", "Small helper for stored ZON text/value.", .{
+    .set_text = py.method(docSetText, .{
+        .self = true,
+        .args = &.{"text"},
+    }),
+    .get_text = py.method(docGetText, .{
+        .self = true,
+    }),
+    .loads = py.method(docLoads, .{
+        .self = true,
+    }),
+    .set_value = py.method(docSetValue, .{
+        .self = true,
+        .args = &.{"value"},
+    }),
+    .dumps = py.method(docDumps, .{
+        .self = true,
+    }),
+});
+
 pub const MODULE = py.module("_zigzon", "ZON codec implemented in Zig.", .{
     .loads = py.method(loads, .{
         .doc = "Parse ZON text into Python objects.",
@@ -36,7 +56,7 @@ pub const MODULE = py.module("_zigzon", "ZON codec implemented in Zig.", .{
         .doc = "Alias for dumps().",
         .args = &.{"value"},
     }),
-});
+}).withTypes(.{ .ZonDocument = ZonDocument });
 
 fn loads(input: py.Object) CallError!py.Object {
     var arena = py.arenaAllocator();
@@ -76,6 +96,38 @@ fn dump(value: py.Object, fp: py.Object) CallError!void {
     const text = try renderZon(allocator, value.ptr);
     const result = fp.callMethod1("write", text) orelse return error.PythonError;
     result.deinit();
+}
+
+fn docSetText(self: py.Object, text: py.Object) CallError!void {
+    if (!py.isUnicode(text.ptr) and !py.isBytes(text.ptr)) {
+        py.raise(.TypeError, "text must be str or bytes");
+        return error.PythonError;
+    }
+    if (!self.setAttr("text", text)) {
+        return error.PythonError;
+    }
+}
+
+fn docGetText(self: py.Object) CallError!py.Object {
+    return self.getAttr("text") orelse error.PythonError;
+}
+
+fn docLoads(self: py.Object) CallError!py.Object {
+    const text = self.getAttr("text") orelse return error.PythonError;
+    defer text.deinit();
+    return loads(text);
+}
+
+fn docSetValue(self: py.Object, value: py.Object) CallError!void {
+    if (!self.setAttr("value", value)) {
+        return error.PythonError;
+    }
+}
+
+fn docDumps(self: py.Object) CallError!py.Object {
+    const value = self.getAttr("value") orelse return error.PythonError;
+    defer value.deinit();
+    return dumps(value);
 }
 
 fn parseZon(allocator: Allocator, source: [:0]const u8) CallError!py.Object {

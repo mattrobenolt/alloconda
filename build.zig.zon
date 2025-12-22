@@ -3,15 +3,10 @@
     .version = "0.0.0",
     .fingerprint = 0x5b5b5c2cc66b1cb5,
     .minimum_zig_version = "0.15.2",
-    .dependencies = .{
-        .alloconda = .{
-            .url = "../../",
-            .hash = "alloconda-0.0.0-tRxrxkAUAABUcnoczwY1iXM6vu6ok_HRaNZ0nSfXHDhs",
-        },
-    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "LICENSE",
     },
 }

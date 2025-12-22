@@ -2,6 +2,14 @@ from pathlib import Path
 
 import click
 
+from .cli_helpers import (
+    config_bool,
+    config_list,
+    config_path,
+    config_value,
+    find_project_dir,
+    read_tool_alloconda,
+)
 from .wheel_builder import build_wheel
 
 
@@ -67,6 +75,31 @@ def wheel(
     force_init: bool,
 ) -> None:
     """Build a single wheel for the current project."""
+    project_root = project_dir or find_project_dir(Path.cwd())
+    config = read_tool_alloconda(project_root, package_dir)
+
+    module_name = module_name or config_value(config, "module-name")
+    lib_path = lib_path or config_path(config, project_root, "lib")
+    package_dir = package_dir or config_path(config, project_root, "package-dir")
+    python_version = python_version or config_value(config, "python-version")
+    pbs_target = pbs_target or config_value(config, "pbs-target")
+    python_cache = python_cache or config_path(config, project_root, "python-cache")
+    project_dir = project_dir or config_path(config, project_root, "project-dir")
+    python_tag = python_tag or config_value(config, "python-tag")
+    abi_tag = abi_tag or config_value(config, "abi-tag")
+    platform_tag = platform_tag or config_value(config, "platform-tag")
+    manylinux = manylinux or config_value(config, "manylinux")
+    musllinux = musllinux or config_value(config, "musllinux")
+    arch = arch or config_value(config, "arch")
+    ext_suffix = ext_suffix or config_value(config, "ext-suffix")
+    out_dir = out_dir or config_path(config, project_root, "out-dir")
+    zig_target = zig_target or config_value(config, "zig-target")
+    no_init = no_init or config_bool(config, "no-init")
+    force_init = force_init or config_bool(config, "force-init")
+    skip_build = skip_build or config_bool(config, "skip-build")
+    include = config_list(config, "include")
+    exclude = config_list(config, "exclude")
+
     wheel_path = build_wheel(
         release=release,
         zig_target=zig_target,
@@ -88,5 +121,7 @@ def wheel(
         no_init=no_init,
         force_init=force_init,
         skip_build=skip_build,
+        include=include,
+        exclude=exclude,
     )
     click.echo(f"✓ Built wheel {wheel_path}")

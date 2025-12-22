@@ -3,7 +3,16 @@ from pathlib import Path
 
 import click
 
-from .cli_helpers import resolve_arch, resolve_pbs_target
+from .cli_helpers import (
+    config_bool,
+    config_list,
+    config_path,
+    config_value,
+    find_project_dir,
+    read_tool_alloconda,
+    resolve_arch,
+    resolve_pbs_target,
+)
 from .pbs import (
     cache_root,
     fetch_and_extract,
@@ -100,8 +109,31 @@ def wheel_all(
     force_init: bool,
 ) -> None:
     """Build a multi-platform wheel matrix from cached python headers."""
+    project_root = project_dir or find_project_dir(Path.cwd())
+    config = read_tool_alloconda(project_root, package_dir)
+
+    if not versions and not all_versions:
+        config_versions = config_list(config, "python-version")
+        if config_versions:
+            versions = tuple(config_versions)
     if not versions and not all_versions:
         raise click.ClickException("Provide --python-version or --all")
+
+    if not targets:
+        config_targets = config_list(config, "targets", "target")
+        if config_targets:
+            targets = tuple(config_targets)
+
+    package_dir = package_dir or config_path(config, project_root, "package-dir")
+    project_dir = project_dir or config_path(config, project_root, "project-dir")
+    out_dir = out_dir or config_path(config, project_root, "out-dir")
+    cache_dir = cache_dir or config_path(config, project_root, "python-cache")
+    release = release or config_bool(config, "release")
+    no_init = no_init or config_bool(config, "no-init")
+    force_init = force_init or config_bool(config, "force-init")
+    module_name = config_value(config, "module-name")
+    include = config_list(config, "include")
+    exclude = config_list(config, "exclude")
 
     if targets:
         target_defs = [parse_target(t) for t in targets]
@@ -150,7 +182,7 @@ def wheel_all(
             release=release,
             zig_target=zig_target,
             lib_path=None,
-            module_name=None,
+            module_name=module_name,
             package_dir=package_dir,
             python_version=version,
             pbs_target=pbs_target,
@@ -169,6 +201,8 @@ def wheel_all(
             no_init=no_init,
             force_init=force_init,
             skip_build=False,
+            include=include,
+            exclude=exclude,
         )
         click.echo(f"✓ Built {wheel_path}")
 

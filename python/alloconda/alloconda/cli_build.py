@@ -2,7 +2,14 @@ from pathlib import Path
 
 import click
 
-from .cli_helpers import build_extension
+from .cli_helpers import (
+    build_extension,
+    config_bool,
+    config_path,
+    config_value,
+    find_project_dir,
+    read_tool_alloconda,
+)
 
 
 @click.command()
@@ -36,6 +43,18 @@ def build(
     force_init: bool,
 ) -> None:
     """Build a Zig extension and install it into a package directory."""
+    project_root = find_project_dir(package_dir or Path.cwd())
+    config = read_tool_alloconda(project_root, package_dir)
+
+    module_name = module_name or config_value(config, "module-name")
+    lib_path = lib_path or config_path(config, project_root, "lib")
+    package_dir = package_dir or config_path(config, project_root, "package-dir")
+    ext_suffix = ext_suffix or config_value(config, "ext-suffix")
+    zig_target = zig_target or config_value(config, "zig-target")
+    python_include = python_include or config_value(config, "python-include")
+    no_init = no_init or config_bool(config, "no-init")
+    force_init = force_init or config_bool(config, "force-init")
+
     dst = build_extension(
         release=release,
         module_name=module_name,

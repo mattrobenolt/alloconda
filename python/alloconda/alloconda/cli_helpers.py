@@ -1,3 +1,4 @@
+import fnmatch
 import importlib.machinery
 import os
 import platform
@@ -8,6 +9,7 @@ import sysconfig
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -17,8 +19,79 @@ class ProjectMetadata:
     name: str
     version: str
     summary: str | None
+    license: str | None
+    classifiers: list[str]
     requires_python: str | None
     dependencies: list[str]
+
+
+def read_tool_alloconda(
+    project_dir: Path | None,
+    package_dir: Path | None = None,
+) -> dict[str, Any]:
+    root = project_dir or find_project_dir(package_dir or Path.cwd())
+    if not root:
+        return {}
+
+    data = tomllib.loads((root / "pyproject.toml").read_text())
+    tool = data.get("tool", {})
+    config = tool.get("alloconda", {})
+    if not isinstance(config, dict):
+        return {}
+    return {key.replace("_", "-"): value for key, value in config.items()}
+
+
+def config_value(config: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in config:
+            return config[key]
+    return None
+
+
+def config_path(
+    config: dict[str, Any],
+    root: Path | None,
+    *keys: str,
+) -> Path | None:
+    value = config_value(config, *keys)
+    if value is None:
+        return None
+    path = Path(value)
+    if root and not path.is_absolute():
+        return root / path
+    return path
+
+
+def config_bool(config: dict[str, Any], *keys: str) -> bool:
+    value = config_value(config, *keys)
+    if value is None:
+        return False
+    return bool(value)
+
+
+def config_list(config: dict[str, Any], *keys: str) -> list[str] | None:
+    value = config_value(config, *keys)
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def matches_any(path: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+
+def should_include_path(
+    rel_path: str,
+    include: list[str] | None,
+    exclude: list[str] | None,
+) -> bool:
+    if include and not matches_any(rel_path, include):
+        return False
+    if exclude and matches_any(rel_path, exclude):
+        return False
+    return True
 
 
 def run_zig_build(
@@ -183,6 +256,8 @@ def read_project_metadata(
             name=name,
             version="0.0.0",
             summary=None,
+            license=None,
+            classifiers=[],
             requires_python=None,
             dependencies=[],
         )
@@ -194,12 +269,29 @@ def read_project_metadata(
     )
     version = project.get("version", "0.0.0")
     summary = project.get("description")
+    license_value = project.get("license")
+    license_text = None
+    if isinstance(license_value, str):
+        license_text = license_value
+    elif isinstance(license_value, dict):
+        text = license_value.get("text")
+        file = license_value.get("file")
+        if isinstance(text, str):
+            license_text = text
+        elif isinstance(file, str):
+            license_text = f"See {file}"
     requires_python = project.get("requires-python")
     dependencies = list(project.get("dependencies", []))
+    classifiers = project.get("classifiers", [])
+    if isinstance(classifiers, str):
+        classifiers = [classifiers]
+    classifiers = [str(item) for item in classifiers]
     return ProjectMetadata(
         name=name,
         version=version,
         summary=summary,
+        license=license_text,
+        classifiers=classifiers,
         requires_python=requires_python,
         dependencies=dependencies,
     )

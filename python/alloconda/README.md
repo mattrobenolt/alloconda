@@ -125,3 +125,22 @@ Add this to `pyproject.toml` to use alloconda as a build backend:
 requires = ["alloconda"]
 build-backend = "alloconda.build_backend"
 ```
+
+## Configuration
+
+Alloconda reads optional defaults from `pyproject.toml`:
+
+```toml
+[tool.alloconda]
+module-name = "_zigadd"
+package-dir = "zigadd"
+python-version = "3.14"
+python-tag = "cp314"
+abi-tag = "cp314"
+manylinux = "2_28"
+arch = "x86_64"
+include = ["*.pyi"]
+exclude = ["tests/*"]
+```
+
+CLI flags and PEP 517 `--config-settings` override these values.

@@ -36,6 +36,7 @@
             python314
             uv
             uvShellHook
+            mdbook
           ];
         };
       }

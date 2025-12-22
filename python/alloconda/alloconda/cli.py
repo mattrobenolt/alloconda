@@ -1,5 +1,6 @@
 import click
 
+from . import __version__
 from .cli_build import build
 from .cli_develop import develop
 from .cli_init import init
@@ -10,6 +11,7 @@ from .cli_wheel_all import wheel_all
 
 
 @click.group()
+@click.version_option(__version__, prog_name="alloconda")
 def main() -> None:
     """\b
       ▜ ▜          ▌
