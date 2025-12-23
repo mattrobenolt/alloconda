@@ -6,7 +6,7 @@ sync:
 
 lint:
     zig fmt --check .
-    zlint
+    fd -e zig | zlint --stdin
 
 fmt:
     zig fmt .

@@ -32,6 +32,7 @@
             zig_0_15
             zls_0_15
             zlint-unstable
+            fd
             pkg-config
             python314
             uv

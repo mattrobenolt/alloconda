@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/DonIsaac/zlint/refs/tags/v0.7.9/zlint.schema.json",
   "rules": {
-    "allocator-first-param": "error",
+    "allocator-first-param": "allow",
     "avoid-as": "error",
     "case-convention": "allow",
     "empty-file": "error",
