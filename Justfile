@@ -12,15 +12,13 @@ fmt:
     zig fmt .
 
 zigadd:
-    cd python/zigadd && just build
-    cd python/zigadd && just test
+    cd python/zigadd && just clean build test
 
 zigadd-wheel:
     cd python/zigadd && just wheel
 
 zigzon:
-    cd python/zigzon && just build
-    cd python/zigzon && just test
+    cd python/zigzon && just clean build test
 
 zigzon-wheel:
     cd python/zigzon && just wheel
@@ -65,4 +63,4 @@ hello:
     cd python/hello_alloconda && alloconda develop
     python -c 'import hello_alloconda; print(hello_alloconda.hello("hello"))'
 
-ci: clean sync lint-all zigadd zigzon hello
+ci: clean sync lint-all zigadd zigzon zigzon-wheel hello

@@ -109,12 +109,12 @@ If `pyproject.toml` exists, the build backend stanza is added automatically.
 
 ### `alloconda inspect`
 
-Inspect a built library or wheel and print derived metadata. Useful for quick
-sanity checks in scripts.
+Inspect built wheels (inspect) or libraries (inspect-lib) and print derived
+metadata. Useful for quick sanity checks in scripts.
 
 ```bash
-uvx alloconda inspect --lib zig-out/lib/libzigadd.dylib
-uvx alloconda inspect --wheel dist/zigadd-0.1.0-*.whl --verify
+uvx alloconda inspect dist/zigadd-0.1.0-*.whl --verify
+uvx alloconda inspect-lib zig-out/lib/libzigadd.dylib
 ```
 
 ### `alloconda python fetch`

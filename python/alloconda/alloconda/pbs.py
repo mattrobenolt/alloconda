@@ -3,7 +3,7 @@ import json
 import os
 import re
 import tarfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import click
@@ -175,7 +175,7 @@ def fetch_and_extract(
         include_members = [m for m in members if m.name.startswith("python/include/")]
         tf.extractall(entry_dir, members=include_members)
         if include_members:
-            include_dir = entry_dir / "python" / "include"
+            include_dir = resolve_python_include(entry_dir / "python" / "include")
 
     if not include_dir or not sysconfig_path:
         raise RuntimeError("PBS archive missing include/sysconfig data")
@@ -254,7 +254,7 @@ def write_entry(entry: PbsEntry, path: Path) -> None:
 
 def load_entry(path: Path) -> PbsEntry:
     data = json.loads(path.read_text())
-    return PbsEntry(
+    entry = PbsEntry(
         version=data["version"],
         build_id=data.get("build_id"),
         target=data["target"],
@@ -264,6 +264,44 @@ def load_entry(path: Path) -> PbsEntry:
         asset_name=data["asset_name"],
         asset_url=data["asset_url"],
     )
+    return fix_entry_include_dir(entry, path)
+
+
+def resolve_python_include(include_root: Path) -> Path | None:
+    if include_root.is_dir() and (include_root / "Python.h").is_file():
+        return include_root
+    if not include_root.is_dir():
+        return None
+    candidates = [
+        child
+        for child in include_root.iterdir()
+        if child.is_dir() and (child / "Python.h").is_file()
+    ]
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    def version_key(path: Path) -> tuple[int, int] | None:
+        match = re.search(r"python(\d+)\.(\d+)", path.name)
+        if not match:
+            return None
+        return (int(match.group(1)), int(match.group(2)))
+
+    versioned = [(version_key(path), path) for path in candidates]
+    versioned = [item for item in versioned if item[0] is not None]
+    if versioned:
+        return sorted(versioned, key=lambda item: item[0])[-1][1]
+    return sorted(candidates, key=lambda path: path.name)[-1]
+
+
+def fix_entry_include_dir(entry: PbsEntry, meta_path: Path) -> PbsEntry:
+    resolved = resolve_python_include(entry.include_dir)
+    if not resolved or resolved == entry.include_dir:
+        return entry
+    updated = replace(entry, include_dir=resolved)
+    write_entry(updated, meta_path)
+    return updated
 
 
 def is_safe_member(member: tarfile.TarInfo) -> bool:

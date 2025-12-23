@@ -18,8 +18,8 @@ build:
 
 wheel:
     rm -rf dist
-    alloconda wheel --python-tag cp314 --abi-tag cp314
-    alloconda inspect --wheel dist/*.whl --verify
+    alloconda wheel
+    alloconda inspect dist/*.whl --verify
 
 test:
     pytest -v tests

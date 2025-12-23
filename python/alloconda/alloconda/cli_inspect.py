@@ -16,11 +16,52 @@ EXTENSION_ENDINGS = (".so", ".pyd", ".dll", ".dylib")
 
 
 @click.command()
-@click.option(
-    "--lib",
-    "lib_path",
+@click.option("--verify", is_flag=True, help="Fail if required files are missing")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON output")
+@click.argument(
+    "wheel_args",
+    nargs=-1,
     type=click.Path(path_type=Path),
-    help="Path to built library (default: zig-out/lib)",
+)
+def inspect(
+    wheel_args: tuple[Path, ...],
+    verify: bool,
+    as_json: bool,
+) -> None:
+    """Inspect wheel files and print derived metadata."""
+    wheel_list = list(wheel_args)
+    if not wheel_list:
+        raise click.ClickException("Provide one or more wheel paths.")
+
+    base: dict[str, object] = {"extension_suffix": get_extension_suffix()}
+    results: list[dict[str, object]] = []
+    for wheel_path in wheel_list:
+        if not wheel_path.exists():
+            raise click.ClickException(f"Wheel not found: {wheel_path}")
+        if wheel_path.suffix != ".whl":
+            raise click.ClickException(
+                f"Not a wheel file: {wheel_path} (use inspect-lib for libraries)"
+            )
+        data = dict(base)
+        data.update(inspect_wheel(wheel_path, verify))
+        results.append(data)
+
+    if as_json:
+        payload: object = results[0] if len(results) == 1 else results
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    for index, data in enumerate(results):
+        if index:
+            click.echo()
+        print_human(data)
+
+
+@click.command("inspect-lib")
+@click.argument(
+    "lib_args",
+    nargs=-1,
+    type=click.Path(path_type=Path),
 )
 @click.option("--module", "module_name", help="Override module name (PyInit_*)")
 @click.option(
@@ -28,42 +69,36 @@ EXTENSION_ENDINGS = (".so", ".pyd", ".dll", ".dylib")
     type=click.Path(path_type=Path, file_okay=False),
     help="Python package directory to inspect",
 )
-@click.option(
-    "--wheel",
-    "wheel_path",
-    type=click.Path(path_type=Path),
-    help="Inspect a built wheel instead of a library",
-)
-@click.option("--verify", is_flag=True, help="Fail if required files are missing")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON output")
-def inspect(
-    lib_path: Path | None,
+def inspect_lib(
+    lib_args: tuple[Path, ...],
     module_name: str | None,
     package_dir: Path | None,
-    wheel_path: Path | None,
-    verify: bool,
     as_json: bool,
 ) -> None:
-    """Inspect a library or wheel and print derived metadata."""
-    if wheel_path and lib_path:
-        raise click.ClickException("Use either --wheel or --lib, not both")
-
-    data: dict[str, object] = {"extension_suffix": get_extension_suffix()}
-
-    if wheel_path:
-        if not wheel_path.exists():
-            raise click.ClickException(f"Wheel not found: {wheel_path}")
-        data.update(inspect_wheel(wheel_path, verify))
-    else:
-        lib = resolve_library_path(lib_path)
-        module_name = module_name or detect_module_name(lib)
-        data.update(inspect_library(lib, module_name, package_dir))
+    """Inspect a built library and print derived metadata."""
+    libs = (
+        [resolve_library_path(path) for path in lib_args]
+        if lib_args
+        else [resolve_library_path(None)]
+    )
+    base: dict[str, object] = {"extension_suffix": get_extension_suffix()}
+    results: list[dict[str, object]] = []
+    for lib in libs:
+        data = dict(base)
+        resolved_module = module_name or detect_module_name(lib)
+        data.update(inspect_library(lib, resolved_module, package_dir))
+        results.append(data)
 
     if as_json:
-        click.echo(json.dumps(data, indent=2, sort_keys=True))
+        payload: object = results[0] if len(results) == 1 else results
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
 
-    print_human(data)
+    for index, data in enumerate(results):
+        if index:
+            click.echo()
+        print_human(data)
 
 
 def inspect_library(

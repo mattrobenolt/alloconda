@@ -55,11 +55,11 @@ feature: you can target manylinux/musllinux, macOS, and Windows from one host.
 ## Inspect
 
 ```bash
-uvx alloconda inspect --lib zig-out/lib/libhello_alloconda.dylib
-uvx alloconda inspect --wheel dist/hello_alloconda-0.1.0-*.whl --verify
+uvx alloconda inspect dist/*.whl --verify
+uvx alloconda inspect-lib zig-out/lib/libhello_alloconda.dylib
 ```
 
-Inspect a built library or wheel and print derived metadata.
+Inspect built wheels (inspect) or libraries (inspect-lib) and print derived metadata.
 
 ## Python headers for cross builds
 

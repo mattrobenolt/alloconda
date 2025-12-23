@@ -13,12 +13,13 @@ lint:
     ty check
 
 build:
-    alloconda build
+    alloconda build --release
 
-wheel:
+wheel: build
     rm -rf dist
-    alloconda wheel --python-tag cp314 --abi-tag cp314
-    alloconda inspect --wheel dist/*.whl --verify
+    alloconda wheel-all --fetch
+    alloconda inspect-lib zig-out/lib/*
+    alloconda inspect --verify dist/*.whl
 
 test:
     pytest -v tests
