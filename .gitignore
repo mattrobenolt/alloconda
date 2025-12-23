@@ -16,6 +16,9 @@ python/hello_alloconda/
 # Virtual environments
 .venv
 
+# wheeltest working directory
+.wheeltest/
+
 # wrangler files
 .wrangler
 .dev.vars*

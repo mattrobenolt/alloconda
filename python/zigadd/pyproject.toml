@@ -3,7 +3,7 @@ name = "zigadd"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
@@ -11,6 +11,9 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest"]
+
+[tool.alloconda]
+python-version = ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
 [build-system]
 requires = ["alloconda"]

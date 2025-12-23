@@ -23,6 +23,12 @@ zigzon:
 zigzon-wheel:
     cd python/zigzon && just wheel
 
+zigadd-test:
+    wheeltest zigadd
+
+zigzon-test:
+    wheeltest zigzon
+
 e2e:
     cd python/zigzon && just e2e
 
@@ -31,12 +37,14 @@ lint-all:
     cd python/alloconda && just lint
     cd python/zigadd && just lint
     cd python/zigzon && just lint
+    cd python/wheeltest && just lint
 
 fmt-all:
     just fmt
     cd python/alloconda && just fmt
     cd python/zigadd && just fmt
     cd python/zigzon && just fmt
+    cd python/wheeltest && just fmt
 
 docs:
     zig build docs -p docs {{python_include}}

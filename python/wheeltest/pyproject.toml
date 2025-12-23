@@ -1,0 +1,20 @@
+[project]
+name = "wheeltest"
+version = "0.1.0"
+description = "Multi-Python version wheel testing harness for alloconda projects"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+    "click>=8.3.1",
+]
+
+[project.scripts]
+wheeltest = "wheeltest.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+    "ty>=0.0.6",
+]

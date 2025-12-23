@@ -1,0 +1,13 @@
+default:
+    @just --list
+
+fmt:
+    ruff check --select I --fix
+    ruff format
+    zig fmt .
+
+lint:
+    zig fmt --check .
+    zlint
+    ruff check
+    ty check
