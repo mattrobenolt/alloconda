@@ -14,7 +14,7 @@ package = false
 
 [tool.uv.workspace]
 members = ["python/*"]
+exclude = ["python/hello_alloconda"]
 
 [tool.uv.sources]
 alloconda = { workspace = true }
-alloconda-docs = { workspace = true }

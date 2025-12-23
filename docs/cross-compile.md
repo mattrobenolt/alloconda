@@ -21,7 +21,8 @@ uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 
 The headers are cached locally and reused across builds.
 
-You can also let `wheel-all` fetch missing headers with `--fetch`.
+`wheel-all` fetches missing headers by default; use `--no-fetch` to disable
+network access.
 
 ## Build a single cross-target wheel
 
@@ -55,12 +56,12 @@ By default, `wheel-all` targets macOS (arm64 + x86_64) and manylinux 2_28
 uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows
 ```
 
-Use `--dry-run` to inspect the matrix before building, and `--fetch` to download
-headers automatically:
+Use `--dry-run` to inspect the matrix before building. Use `--no-fetch` when you
+want to require a pre-populated header cache:
 
 ```bash
 uvx alloconda wheel-all --python-version 3.14 --include-musllinux --dry-run
-uvx alloconda wheel-all --python-version 3.14 --include-musllinux --fetch
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --no-fetch
 ```
 
 To override the target list explicitly, use `--target` (repeatable):
@@ -78,6 +79,7 @@ Set project defaults in `pyproject.toml` so you don’t have to repeat flags:
 ```toml
 [tool.alloconda]
 python-version = ["3.14"]
+optimize = "ReleaseFast"
 targets = [
   "macosx_14_0_arm64",
   "macosx_11_0_x86_64",
@@ -85,3 +87,5 @@ targets = [
   "manylinux_2_28_aarch64",
 ]
 ```
+
+Release builds are the default; use `--debug` when you want `-Doptimize=Debug`.

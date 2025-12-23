@@ -13,13 +13,16 @@ lint:
     ty check
 
 build:
-    alloconda build --release
+    alloconda build
 
-wheel: build
+wheel:
     rm -rf dist
-    alloconda wheel-all --fetch
+    alloconda wheel-all
     alloconda inspect-lib zig-out/lib/*
     alloconda inspect --verify dist/*.whl
+
+e2e: wheel
+    ./scripts/smoke-wheel.sh dist/*.whl
 
 test:
     pytest -v tests

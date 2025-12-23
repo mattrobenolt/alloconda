@@ -23,6 +23,9 @@ zigzon:
 zigzon-wheel:
     cd python/zigzon && just wheel
 
+e2e:
+    cd python/zigzon && just e2e
+
 lint-all:
     just lint
     cd python/alloconda && just lint

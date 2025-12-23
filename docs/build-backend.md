@@ -27,6 +27,9 @@ build backend reads `pyproject.toml` metadata and `tool.alloconda` settings.
 For cross-compilation and multi-target builds, prefer the CLI (`wheel` /
 `wheel-all`) so you can control the target matrix directly.
 
+Release builds are the default. Use `--config-settings debug=true` for Debug
+builds, or set `optimize` in `tool.alloconda` to override release optimization.
+
 ## Publishing
 
 Alloconda does not ship a publish command. Use `twine` to upload built wheels.

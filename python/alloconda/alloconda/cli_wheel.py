@@ -3,18 +3,27 @@ from pathlib import Path
 import click
 
 from .cli_helpers import (
+    OPTIMIZE_CHOICES,
     config_bool,
     config_list,
     config_path,
     config_value,
     find_project_dir,
     read_tool_alloconda,
+    resolve_optimize_mode,
+    resolve_release_mode,
 )
 from .wheel_builder import build_wheel
 
 
 @click.command()
-@click.option("--release", is_flag=True, help="Build in release mode")
+@click.option("--release", is_flag=True, help="Build with -Doptimize=ReleaseFast")
+@click.option("--debug", is_flag=True, help="Build with -Doptimize=Debug")
+@click.option(
+    "--optimize",
+    type=click.Choice(OPTIMIZE_CHOICES),
+    help="Override release optimization",
+)
 @click.option("--module", "module_name", help="Override module name (PyInit_*)")
 @click.option(
     "--lib", "lib_path", type=click.Path(path_type=Path), help="Path to built library"
@@ -54,6 +63,8 @@ from .wheel_builder import build_wheel
 @click.option("--force-init", is_flag=True, help="Overwrite existing __init__.py")
 def wheel(
     release: bool,
+    debug: bool,
+    optimize: str | None,
     module_name: str | None,
     lib_path: Path | None,
     package_dir: Path | None,
@@ -97,11 +108,23 @@ def wheel(
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
     skip_build = skip_build or config_bool(config, "skip-build")
+    release = resolve_release_mode(
+        release_flag=release,
+        debug_flag=debug,
+        config=config,
+        default_release=True,
+    )
+    optimize = resolve_optimize_mode(
+        release=release,
+        optimize_flag=optimize,
+        config=config,
+    )
     include = config_list(config, "include")
     exclude = config_list(config, "exclude")
 
     wheel_path = build_wheel(
         release=release,
+        optimize=optimize,
         zig_target=zig_target,
         lib_path=lib_path,
         module_name=module_name,

@@ -45,7 +45,8 @@ Options:
 - `--out-dir`: wheel output directory (default: `dist/`)
 - `--skip-build`: skip `zig build` if you already built the library
 
-When using `--python-version`, run `uvx alloconda python fetch` first to populate the cache.
+`wheel-all` downloads missing headers by default. Use `--no-fetch` to require a
+pre-populated cache.
 If `--python-tag` is omitted, it defaults from `--python-version` (e.g. `cp314`).
 
 ### `alloconda wheel-all`
@@ -60,7 +61,7 @@ Options:
 - `--python-version` (repeatable) or `--all` for every available version
 - `--target` to override the default platform list
 - `--include-windows` to add Windows targets (experimental)
-- `--fetch` to auto-download missing headers
+- `--no-fetch` to disable automatic header downloads
 - `--dry-run` to print the matrix
 
 ### `alloconda develop`
@@ -146,6 +147,7 @@ Alloconda reads optional defaults from `pyproject.toml`:
 module-name = "_zigadd"
 package-dir = "zigadd"
 python-version = "3.14"
+optimize = "ReleaseFast"
 python-tag = "cp314"
 abi-tag = "cp314"
 manylinux = "2_28"
@@ -154,4 +156,6 @@ include = ["*.pyi"]
 exclude = ["tests/*"]
 ```
 
-CLI flags and PEP 517 `--config-settings` override these values.
+Release is the default. Use `--debug` to build with `-Doptimize=Debug`; `optimize`
+only affects release builds. CLI flags and PEP 517 `--config-settings` override
+these values.

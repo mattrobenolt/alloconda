@@ -25,6 +25,8 @@ from .wheel_builder import (
     write_record,
 )
 
+OPTIMIZE_CHOICES = {"ReleaseSafe", "ReleaseFast", "ReleaseSmall"}
+
 
 def build_wheel(
     wheel_directory: str,
@@ -35,8 +37,10 @@ def build_wheel(
     project_dir = _resolve_project_dir(settings.get("project-dir"))
     tool_config = read_tool_alloconda(project_dir)
     settings = _merge_config(tool_config, settings)
+    release = _resolve_release(settings, default_release=True)
     wheel_path = build_wheel_impl(
-        release=_bool_setting(settings, "release", False),
+        release=release,
+        optimize=_resolve_optimize(settings, release),
         zig_target=settings.get("zig-target"),
         lib_path=_path_setting(settings, "lib"),
         module_name=settings.get("module-name"),
@@ -73,8 +77,10 @@ def build_editable(
     settings = _merge_config(tool_config, settings)
     package_dir = _resolve_package_dir(settings.get("package-dir"), project_dir)
 
+    release = _resolve_release(settings, default_release=True)
     build_extension(
-        release=_bool_setting(settings, "release", False),
+        release=release,
+        optimize=_resolve_optimize(settings, release),
         module_name=settings.get("module-name"),
         lib_path=_path_setting(settings, "lib"),
         package_dir=package_dir,
@@ -265,6 +271,38 @@ def _path_setting(settings: dict[str, Any], key: str) -> Path | None:
     if value:
         return Path(value)
     return None
+
+
+def _string_setting(settings: dict[str, Any], key: str) -> str | None:
+    value = settings.get(key)
+    if isinstance(value, list):
+        if not value:
+            return None
+        value = value[-1]
+    if value is None:
+        return None
+    return str(value)
+
+
+def _resolve_release(settings: dict[str, Any], default_release: bool) -> bool:
+    debug = _bool_setting(settings, "debug", False)
+    if debug:
+        return False
+    return _bool_setting(settings, "release", default_release)
+
+
+def _resolve_optimize(settings: dict[str, Any], release: bool) -> str | None:
+    if not release:
+        return "Debug"
+    value = _string_setting(settings, "optimize")
+    if value is None:
+        return None
+    if value not in OPTIMIZE_CHOICES:
+        raise ValueError(
+            f"Unsupported optimize mode: {value}. "
+            f"Use one of: {', '.join(sorted(OPTIMIZE_CHOICES))}"
+        )
+    return value
 
 
 def _is_sdist_ignored(path: Path) -> bool:

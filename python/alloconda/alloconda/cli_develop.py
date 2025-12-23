@@ -7,16 +7,25 @@ from pathlib import Path
 import click
 
 from .cli_helpers import (
+    OPTIMIZE_CHOICES,
     config_bool,
     config_path,
     config_value,
     find_project_dir,
     read_tool_alloconda,
+    resolve_optimize_mode,
+    resolve_release_mode,
 )
 
 
 @click.command()
-@click.option("--release", is_flag=True, help="Build in release mode")
+@click.option("--release", is_flag=True, help="Build with -Doptimize=ReleaseFast")
+@click.option("--debug", is_flag=True, help="Build with -Doptimize=Debug")
+@click.option(
+    "--optimize",
+    type=click.Choice(OPTIMIZE_CHOICES),
+    help="Override release optimization",
+)
 @click.option("--module", "module_name", help="Override module name (PyInit_*)")
 @click.option(
     "--lib", "lib_path", type=click.Path(path_type=Path), help="Path to built library"
@@ -49,6 +58,8 @@ from .cli_helpers import (
 @click.option("--uv", "use_uv", is_flag=True, help="Use uv pip for editable install")
 def develop(
     release: bool,
+    debug: bool,
+    optimize: str | None,
     module_name: str | None,
     lib_path: Path | None,
     package_dir: Path | None,
@@ -75,6 +86,21 @@ def develop(
     skip_build = skip_build or config_bool(config, "skip-build")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
+    release_flag = release
+    debug_flag = debug
+    release = resolve_release_mode(
+        release_flag=release_flag,
+        debug_flag=debug_flag,
+        config=config,
+        default_release=False,
+    )
+    if not release_flag and not debug_flag:
+        release = False
+    optimize = resolve_optimize_mode(
+        release=release,
+        optimize_flag=optimize,
+        config=config,
+    )
 
     has_uv = shutil.which("uv") is not None
     has_pip = importlib.util.find_spec("pip") is not None
@@ -86,7 +112,11 @@ def develop(
         raise click.ClickException(
             "pip is not available; install pip or re-run with --uv."
         )
-    _add_config_setting(cmd, "release", release)
+    if release:
+        _add_config_setting(cmd, "release", True)
+        _add_config_setting(cmd, "optimize", optimize)
+    else:
+        _add_config_setting(cmd, "debug", True)
     _add_config_setting(cmd, "module-name", module_name)
     _add_config_setting(cmd, "lib", _path_str(lib_path))
     _add_config_setting(cmd, "package-dir", _path_str(package_dir))

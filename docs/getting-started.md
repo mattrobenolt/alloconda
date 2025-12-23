@@ -86,10 +86,10 @@ dry run to see the matrix:
 uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --dry-run
 ```
 
-Then run the build (and fetch any missing headers automatically):
+Then run the build (headers are fetched automatically by default):
 
 ```bash
-uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows --fetch
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux --include-windows
 ```
 
 For detailed targeting and configuration, see the cross-compilation chapter.

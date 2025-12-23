@@ -13,6 +13,8 @@ from typing import Any
 
 import click
 
+OPTIMIZE_CHOICES = ("ReleaseSafe", "ReleaseFast", "ReleaseSmall")
+
 
 @dataclass(frozen=True)
 class ProjectMetadata:
@@ -98,10 +100,13 @@ def run_zig_build(
     release: bool,
     zig_target: str | None,
     python_include: str | None,
+    optimize: str | None = None,
     workdir: Path | None = None,
 ) -> None:
     cmd = ["zig", "build"]
-    if release:
+    if optimize:
+        cmd.append(f"-Doptimize={optimize}")
+    elif release:
         cmd.append("-Doptimize=ReleaseFast")
     if zig_target:
         cmd.append(f"-Dtarget={zig_target}")
@@ -112,6 +117,45 @@ def run_zig_build(
         env["ALLOCONDA_PYTHON_INCLUDE"] = python_include
     click.echo(f"Running: {cmd}")
     subprocess.run(cmd, check=True, cwd=workdir, env=env)
+
+
+def resolve_release_mode(
+    *,
+    release_flag: bool,
+    debug_flag: bool,
+    config: dict[str, Any],
+    default_release: bool,
+) -> bool:
+    if release_flag and debug_flag:
+        raise click.ClickException("Use only one of --release or --debug")
+    if debug_flag:
+        return False
+    if release_flag:
+        return True
+    config_release = config_value(config, "release")
+    if config_release is None:
+        return default_release
+    return bool(config_release)
+
+
+def resolve_optimize_mode(
+    *,
+    release: bool,
+    optimize_flag: str | None,
+    config: dict[str, Any],
+) -> str | None:
+    if not release:
+        return "Debug"
+    value = optimize_flag or config_value(config, "optimize")
+    if value is None:
+        return None
+    value = str(value)
+    if value not in OPTIMIZE_CHOICES:
+        raise click.ClickException(
+            f"Unsupported optimize mode: {value}. "
+            f"Use one of: {', '.join(OPTIMIZE_CHOICES)}"
+        )
+    return value
 
 
 def get_so_suffix() -> str:
@@ -137,7 +181,11 @@ def resolve_extension_suffix(ext_suffix: str | None) -> str:
     return ext_suffix or get_extension_suffix()
 
 
-def resolve_library_path(lib_path: Path | None, base_dir: Path | None = None) -> Path:
+def resolve_library_path(
+    lib_path: Path | None,
+    base_dir: Path | None = None,
+    lib_suffix: str | None = None,
+) -> Path:
     base_dir = base_dir or Path.cwd()
     if lib_path:
         if not lib_path.exists():
@@ -148,14 +196,41 @@ def resolve_library_path(lib_path: Path | None, base_dir: Path | None = None) ->
     if not lib_dir.is_dir():
         raise click.ClickException(f"Missing build output directory: {lib_dir}")
 
-    suffix = f".{get_so_suffix()}"
+    suffix = normalize_lib_suffix(lib_suffix) if lib_suffix else f".{get_so_suffix()}"
     libs = sorted(p for p in lib_dir.iterdir() if p.is_file() and p.suffix == suffix)
     if not libs:
-        raise click.ClickException(f"No libraries found in {lib_dir}")
+        raise click.ClickException(
+            f"No libraries with suffix {suffix} found in {lib_dir}"
+        )
     if len(libs) > 1:
         names = ", ".join(p.name for p in libs)
         raise click.ClickException(f"Multiple libraries found in {lib_dir}: {names}")
     return libs[0]
+
+
+def normalize_lib_suffix(suffix: str) -> str:
+    return suffix if suffix.startswith(".") else f".{suffix}"
+
+
+def lib_suffix_for_target(
+    zig_target: str | None, platform_tag: str | None
+) -> str | None:
+    target = (zig_target or "").lower()
+    if "windows" in target or "mingw" in target:
+        return ".dll"
+    if "macos" in target or "darwin" in target:
+        return ".dylib"
+    if "linux" in target:
+        return ".so"
+
+    platform = (platform_tag or "").lower()
+    if platform.startswith(("manylinux", "musllinux", "linux")):
+        return ".so"
+    if platform.startswith("macosx"):
+        return ".dylib"
+    if "win" in platform:
+        return ".dll"
+    return None
 
 
 def detect_module_name(lib_path: Path) -> str:
@@ -441,6 +516,7 @@ if hasattr(_mod, "__all__"):
 def build_extension(
     *,
     release: bool,
+    optimize: str | None,
     module_name: str | None,
     lib_path: Path | None,
     package_dir: Path | None,
@@ -454,9 +530,20 @@ def build_extension(
 ) -> Path:
     build_root = workdir or Path.cwd()
     if not skip_build:
-        run_zig_build(release, zig_target, python_include, workdir=build_root)
+        run_zig_build(
+            release,
+            zig_target,
+            python_include,
+            optimize=optimize,
+            workdir=build_root,
+        )
 
-    lib_path = resolve_library_path(lib_path, base_dir=build_root)
+    lib_suffix = lib_suffix_for_target(zig_target, None)
+    lib_path = resolve_library_path(
+        lib_path,
+        base_dir=build_root,
+        lib_suffix=lib_suffix,
+    )
     if module_name is None:
         module_name = detect_module_name(lib_path)
 

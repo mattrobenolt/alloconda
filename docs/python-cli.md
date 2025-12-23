@@ -51,6 +51,7 @@ uvx alloconda wheel-all
 `wheel` builds a single wheel for the current platform. `wheel-all` builds a
 matrix across Python versions and platforms. Cross-compilation is a first-class
 feature: you can target manylinux/musllinux, macOS, and Windows from one host.
+Missing headers are fetched automatically; use `--no-fetch` to disable.
 
 ## Inspect
 
@@ -83,6 +84,8 @@ You can set defaults in `pyproject.toml`:
 module-name = "_hello_alloconda"
 package-dir = "python/hello_alloconda"
 python-version = "3.14"
+optimize = "ReleaseFast"
 ```
 
-Any CLI flag can override these defaults.
+Release is the default. Use `--debug` to build with `-Doptimize=Debug`; `optimize`
+only affects release builds. Any CLI flag can override these defaults.

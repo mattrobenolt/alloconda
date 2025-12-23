@@ -13,6 +13,13 @@ const DefaultTypeStorage = extern struct {
 };
 const DefaultDictOffset: c.Py_ssize_t = @offsetOf(DefaultTypeStorage, "dict");
 
+fn managedDictGcEnabled() bool {
+    if (!@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) return false;
+    const has_visit = @hasDecl(c, "PyObject_VisitManagedDict") or @hasDecl(c, "_PyObject_VisitManagedDict");
+    const has_clear = @hasDecl(c, "PyObject_ClearManagedDict") or @hasDecl(c, "_PyObject_ClearManagedDict");
+    return has_visit and has_clear and @hasDecl(c, "PyObject_GC_Del");
+}
+
 const py = @This();
 /// Convenience arena allocator backed by the CPython allocator.
 pub fn arenaAllocator() std.heap.ArenaAllocator {
@@ -145,52 +152,141 @@ fn classSlots(
     comptime methods_ptr: ?*anyopaque,
     comptime doc: ?[:0]const u8,
 ) [*c]const c.PyType_Slot {
+    const managed_dict = @hasDecl(c, "Py_TPFLAGS_MANAGED_DICT");
+    const use_dict_offset = !managed_dict and @hasDecl(c, "Py_tp_dictoffset");
+    const use_gc = managedDictGcEnabled();
+    const new_fn: ?*anyopaque = if (use_dict_offset)
+        @ptrCast(@constCast(&allocondaTypeNew))
+    else
+        @ptrCast(@constCast(&c.PyType_GenericNew));
+    const traverse_fn: ?*anyopaque = if (use_gc)
+        @ptrCast(@constCast(&allocondaTypeTraverse))
+    else
+        null;
+    const clear_fn: ?*anyopaque = if (use_gc)
+        @ptrCast(@constCast(&allocondaTypeClear))
+    else
+        null;
+    const free_fn: ?*anyopaque = if (use_gc)
+        @ptrCast(@constCast(&c.PyObject_GC_Del))
+    else
+        null;
     if (doc) |doc_text| {
-        if (@hasDecl(c, "Py_tp_dictoffset")) {
+        if (use_dict_offset) {
             return @ptrCast(&[_]c.PyType_Slot{
                 .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
                 .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
+                .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
+                .{ .slot = 0, .pfunc = null },
+            });
+        }
+        if (use_gc) {
+            return @ptrCast(&[_]c.PyType_Slot{
+                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+                .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
+                .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
+                .{ .slot = c.Py_tp_free, .pfunc = free_fn },
                 .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
                 .{ .slot = 0, .pfunc = null },
             });
         }
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
             .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
             .{ .slot = 0, .pfunc = null },
         });
     }
 
-    if (@hasDecl(c, "Py_tp_dictoffset")) {
+    if (use_dict_offset) {
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
             .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
+            .{ .slot = 0, .pfunc = null },
+        });
+    }
+    if (use_gc) {
+        return @ptrCast(&[_]c.PyType_Slot{
+            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+            .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
+            .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
+            .{ .slot = c.Py_tp_free, .pfunc = free_fn },
             .{ .slot = 0, .pfunc = null },
         });
     }
     return @ptrCast(&[_]c.PyType_Slot{
         .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-        .{ .slot = c.Py_tp_new, .pfunc = @ptrCast(@constCast(&c.PyType_GenericNew)) },
+        .{ .slot = c.Py_tp_new, .pfunc = new_fn },
         .{ .slot = 0, .pfunc = null },
     });
 }
 
 fn classFlags() c_uint {
     var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
-    if (!@hasDecl(c, "Py_tp_dictoffset") and @hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
         flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
+    }
+    if (managedDictGcEnabled()) {
+        flags |= @intCast(c.Py_TPFLAGS_HAVE_GC);
     }
     return flags;
 }
 
 fn classBasicSize() usize {
+    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+        return @sizeOf(c.PyObject);
+    }
     if (@hasDecl(c, "Py_tp_dictoffset")) {
         return @sizeOf(DefaultTypeStorage);
     }
     return @sizeOf(c.PyObject);
+}
+
+fn allocondaTypeNew(
+    type_obj: ?*c.PyTypeObject,
+    args: ?*c.PyObject,
+    kwargs: ?*c.PyObject,
+) callconv(.c) ?*c.PyObject {
+    const obj = c.PyType_GenericNew(type_obj, args, kwargs) orelse return null;
+    if (@hasDecl(c, "Py_tp_dictoffset")) {
+        const offset: usize = @intCast(DefaultDictOffset);
+        const base: [*]u8 = @ptrCast(@constCast(obj));
+        const slot: *?*c.PyObject = @ptrCast(@alignCast(base + offset));
+        slot.* = null;
+    }
+    return obj;
+}
+
+fn allocondaTypeTraverse(
+    self: ?*c.PyObject,
+    visit: c.visitproc,
+    arg: ?*anyopaque,
+) callconv(.c) c_int {
+    const obj = self orelse return 0;
+    if (@hasDecl(c, "PyObject_VisitManagedDict")) {
+        return c.PyObject_VisitManagedDict(obj, visit, arg);
+    }
+    if (@hasDecl(c, "_PyObject_VisitManagedDict")) {
+        return c._PyObject_VisitManagedDict(obj, visit, arg);
+    }
+    return 0;
+}
+
+fn allocondaTypeClear(self: ?*c.PyObject) callconv(.c) c_int {
+    const obj = self orelse return 0;
+    if (@hasDecl(c, "PyObject_ClearManagedDict")) {
+        c.PyObject_ClearManagedDict(obj);
+        return 0;
+    }
+    if (@hasDecl(c, "_PyObject_ClearManagedDict")) {
+        c._PyObject_ClearManagedDict(obj);
+        return 0;
+    }
+    return 0;
 }
 
 /// Wrapper for a Python object with ownership tracking.

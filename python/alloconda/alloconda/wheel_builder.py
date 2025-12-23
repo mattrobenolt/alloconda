@@ -13,6 +13,7 @@ from .cli_helpers import (
     ProjectMetadata,
     detect_module_name,
     find_project_dir,
+    lib_suffix_for_target,
     normalize_dist_name,
     read_project_metadata,
     resolve_extension_suffix,
@@ -44,6 +45,7 @@ class WheelOptions:
 def build_wheel(
     *,
     release: bool,
+    optimize: str | None,
     zig_target: str | None,
     lib_path: Path | None,
     module_name: str | None,
@@ -88,11 +90,13 @@ def build_wheel(
     build_root = project_dir or find_project_dir(package_dir) or Path.cwd()
 
     if not skip_build:
-        run_zig_build(release, zig_target, python_include, workdir=build_root)
-
-    lib_path = resolve_library_path(lib_path, base_dir=build_root)
-    if module_name is None:
-        module_name = detect_module_name(lib_path)
+        run_zig_build(
+            release,
+            zig_target,
+            python_include,
+            optimize=optimize,
+            workdir=build_root,
+        )
 
     metadata = read_project_metadata(project_dir, package_dir)
 
@@ -111,6 +115,16 @@ def build_wheel(
         musllinux=musllinux,
         arch=arch,
     )
+
+    lib_suffix = lib_suffix_for_target(zig_target, tags.platform_tag)
+    lib_path = resolve_library_path(
+        lib_path,
+        base_dir=build_root,
+        lib_suffix=lib_suffix,
+    )
+    if module_name is None:
+        module_name = detect_module_name(lib_path)
+
     if (
         tags.platform_tag != platform_tag
         and ext_suffix is None
