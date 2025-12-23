@@ -93,7 +93,7 @@ uvx alloconda init
 ```
 
 This creates `build.zig`, `build.zig.zon`, `src/root.zig`, and a default package
-directory at `src/<project_name>/__init__.py`.
+directory at `python/<project_name>/__init__.py`.
 
 Options:
 - `--name` to override the project name

@@ -199,7 +199,12 @@ def resolve_package_dir(package_dir: Path | None, base_dir: Path | None = None) 
 
     project_name = read_project_name(base_dir)
     candidates: list[Path] = []
-    for base in (base_dir, base_dir / "src"):
+    for base in (
+        base_dir,
+        base_dir / "src",
+        base_dir / "python",
+        base_dir / "python" / "src",
+    ):
         if project_name:
             candidate = base / project_name
             if candidate.is_dir():
@@ -209,7 +214,7 @@ def resolve_package_dir(package_dir: Path | None, base_dir: Path | None = None) 
             for child in base.iterdir():
                 if not child.is_dir():
                     continue
-                if child.name in {".zig-cache", "zig-out", "src", ".git"}:
+                if child.name in {".zig-cache", "zig-out", "src", "python", ".git"}:
                     continue
                 if (child / "__init__.py").is_file():
                     candidates.append(child)

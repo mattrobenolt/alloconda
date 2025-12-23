@@ -20,7 +20,7 @@ uvx alloconda init --name hello_alloconda
 ```
 
 `alloconda init` creates `build.zig`, `build.zig.zon`, `src/root.zig`, and a
-`src/<project_name>/__init__.py` package directory. If a `pyproject.toml`
+`python/<project_name>/__init__.py` package directory. If a `pyproject.toml`
 exists, it adds the `build-system` block automatically.
 Pass `--alloconda-path` to use a local alloconda checkout instead of fetching.
 
@@ -81,7 +81,7 @@ You can set defaults in `pyproject.toml`:
 ```toml
 [tool.alloconda]
 module-name = "_hello_alloconda"
-package-dir = "src/hello_alloconda"
+package-dir = "python/hello_alloconda"
 python-version = "3.14"
 ```
 

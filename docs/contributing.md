@@ -46,6 +46,12 @@ just zigadd
 just zigzon
 ```
 
+Run everything CI checks:
+
+```bash
+just ci
+```
+
 Lint the repo:
 
 ```bash

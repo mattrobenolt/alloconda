@@ -23,7 +23,7 @@ uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda
 ```
 
 `alloconda init` scaffolds the Zig project, wires up the build backend, and
-creates a default Python package under `src/<project_name>/`.
+creates a default Python package under `python/<project_name>/`.
 
 ## Build wheels
 

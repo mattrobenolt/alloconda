@@ -43,7 +43,7 @@ docs:
 
 python_include := if env("ALLOCONDA_PYTHON_INCLUDE", "") != "" { "-Dpython-include=" + env("ALLOCONDA_PYTHON_INCLUDE") } else { "" }
 
-docs-serve:
+docs-serve: docs
     mdbook serve
 
 publish:
@@ -55,3 +55,14 @@ clean:
     rm -rf dist/
     rm -rf zig-out/
     rm -rf .zig-cache/
+    rm -rf python/hello_alloconda
+
+hello:
+    rm -rf python/hello_alloconda
+    mkdir python/hello_alloconda
+    uv init --no-pin-python python/hello_alloconda
+    cd python/hello_alloconda && alloconda init
+    cd python/hello_alloconda && alloconda develop
+    python -c 'import hello_alloconda; print(hello_alloconda.hello("hello"))'
+
+ci: clean sync lint-all zigadd zigzon hello

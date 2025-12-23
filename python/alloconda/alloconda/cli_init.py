@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 import click
+import tomlkit
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 DEFAULT_ALLOCONDA_URL = "git+https://github.com/mattrobenolt/alloconda?ref=main"
@@ -40,17 +41,6 @@ def read_project_name(dest_dir: Path) -> str | None:
     project = data.get("project", {})
     name = project.get("name")
     return name if isinstance(name, str) else None
-
-
-def find_alloconda_root(start: Path) -> Path | None:
-    for path in (start, *start.parents):
-        candidate = path / "build.zig.zon"
-        if not candidate.is_file():
-            continue
-        text = candidate.read_text()
-        if ".name = .alloconda" in text:
-            return path
-    return None
 
 
 def is_url(value: str) -> bool:
@@ -108,19 +98,38 @@ def render_template(name: str, context: dict[str, str]) -> str:
     return TEMPLATE_ENV.get_template(name).render(**context)
 
 
-def ensure_build_system(pyproject_path: Path) -> bool:
+def update_pyproject(pyproject_path: Path, package_dir: str) -> bool:
     if not pyproject_path.is_file():
         return False
-    text = pyproject_path.read_text()
-    if "[build-system]" in text:
-        return False
-    block = (
-        "\n[build-system]\n"
-        'requires = ["alloconda"]\n'
-        'build-backend = "alloconda.build_backend"\n'
-    )
-    pyproject_path.write_text(text.rstrip() + "\n" + block)
-    return True
+    doc = tomlkit.parse(pyproject_path.read_text())
+    updated = False
+
+    if "build-system" not in doc:
+        build_system = tomlkit.table()
+        build_system.add("requires", ["alloconda"])
+        build_system.add("build-backend", "alloconda.build_backend")
+        doc["build-system"] = build_system
+        updated = True
+
+    tool = doc.get("tool")
+    if tool is None:
+        tool = tomlkit.table()
+        doc["tool"] = tool
+        updated = True
+
+    alloconda = tool.get("alloconda")
+    if alloconda is None:
+        alloconda = tomlkit.table()
+        tool["alloconda"] = alloconda
+        updated = True
+
+    if "package-dir" not in alloconda:
+        alloconda["package-dir"] = package_dir
+        updated = True
+
+    if updated:
+        pyproject_path.write_text(tomlkit.dumps(doc))
+    return updated
 
 
 def write_file(path: Path, content: str, force: bool) -> None:
@@ -131,7 +140,7 @@ def write_file(path: Path, content: str, force: bool) -> None:
 
 
 def ensure_package_dir(dest_dir: Path, package_name: str) -> Path:
-    package_dir = dest_dir / "src" / package_name
+    package_dir = dest_dir / "python" / package_name
     package_dir.mkdir(parents=True, exist_ok=True)
     init_path = package_dir / "__init__.py"
     if not init_path.exists():
@@ -154,6 +163,7 @@ def ensure_package_dir(dest_dir: Path, package_name: str) -> Path:
 )
 @click.option(
     "--alloconda-path",
+    default=DEFAULT_ALLOCONDA_URL,
     help="Path or git+https URL to alloconda source for build.zig.zon",
 )
 @click.option("--force", is_flag=True, help="Overwrite existing files")
@@ -161,7 +171,7 @@ def init(
     project_name: str | None,
     module_name: str | None,
     dest_dir: Path,
-    alloconda_path: str | None,
+    alloconda_path: str,
     force: bool,
 ) -> None:
     """Scaffold build.zig and a minimal root module."""
@@ -170,19 +180,12 @@ def init(
     package_name = normalize_name(inferred_name)
     module_name = module_name or f"_{package_name}"
 
-    alloconda_root = find_alloconda_root(dest_dir)
-    alloconda_source = alloconda_path or (
-        str(alloconda_root) if alloconda_root else None
-    )
-    if alloconda_source is None:
-        alloconda_source = DEFAULT_ALLOCONDA_URL
-
     alloconda_dep = ""
     needs_fetch = False
-    if is_url(alloconda_source):
+    if is_url(alloconda_path):
         needs_fetch = True
     else:
-        alloconda_path_obj = Path(alloconda_source).expanduser()
+        alloconda_path_obj = Path(alloconda_path).expanduser()
         if not alloconda_path_obj.exists():
             raise click.ClickException(
                 "Could not find alloconda; pass --alloconda-path to a local checkout."
@@ -213,12 +216,16 @@ def init(
         update_fingerprint(dest_dir / "build.zig.zon", fingerprint)
 
     if needs_fetch:
-        save_alloconda_dependency(alloconda_source, dest_dir)
+        save_alloconda_dependency(alloconda_path, dest_dir)
 
-    if ensure_build_system(dest_dir / "pyproject.toml"):
+    pyproject_path = dest_dir / "pyproject.toml"
+    updated_pyproject = False
+    if update_pyproject(pyproject_path, f"python/{package_name}"):
+        updated_pyproject = True
+    if updated_pyproject:
         click.echo(f"✓ Updated {dest_dir / 'pyproject.toml'}")
 
     click.echo(f"✓ Wrote {dest_dir / 'build.zig'}")
     click.echo(f"✓ Wrote {dest_dir / 'build.zig.zon'}")
     click.echo(f"✓ Wrote {dest_dir / 'src' / 'root.zig'}")
-    click.echo(f"✓ Wrote {dest_dir / 'src' / package_name / '__init__.py'}")
+    click.echo(f"✓ Wrote {dest_dir / 'python' / package_name / '__init__.py'}")

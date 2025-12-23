@@ -45,9 +45,9 @@ The default module name is `_<project_name>` (so `_hello_alloconda` here).
 
 ## 3) Verify the Python package
 
-`alloconda init` creates `src/<project_name>/__init__.py` so the CLI can locate
-the package directory. If you prefer a different layout, move the package and
-set `tool.alloconda.package-dir` in `pyproject.toml`.
+`alloconda init` creates `python/<project_name>/__init__.py` so the CLI can
+locate the package directory. If you prefer a different layout, move the
+package and set `tool.alloconda.package-dir` in `pyproject.toml`.
 
 ## 4) Build and import
 
@@ -59,7 +59,7 @@ uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda
 If `alloconda build` cannot infer your package directory, pass it explicitly:
 
 ```bash
-uvx alloconda build --package-dir src/hello_alloconda
+uvx alloconda build --package-dir python/hello_alloconda
 ```
 
 The CLI copies the built extension into the package directory and generates an
