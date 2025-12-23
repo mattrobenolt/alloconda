@@ -27,4 +27,4 @@ test:
 clean:
     rm -rf zig-out
     rm -rf dist
-    rm zigzon/*.so
+    rm -f zigzon/*.so

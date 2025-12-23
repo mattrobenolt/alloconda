@@ -69,11 +69,22 @@ pub const Module = struct {
 
     /// Create the Python module object.
     pub fn create(self: *const Module) ?*c.PyObject {
-        const module_obj = c.PyModule_Create(@constCast(&self.inner)) orelse return null;
+        const def_ptr = c.PyMem_Malloc(@sizeOf(c.PyModuleDef)) orelse {
+            _ = c.PyErr_NoMemory();
+            return null;
+        };
+        const def: *c.PyModuleDef = @ptrCast(@alignCast(def_ptr));
+        def.* = self.inner;
+        const module_obj = c.PyModule_Create(def);
+        if (module_obj == null) {
+            c.PyMem_Free(def_ptr);
+            return null;
+        }
         if (self.types) |types| {
             for (types) |class_def| {
                 if (!class_def.addToModule(module_obj, self.name)) {
                     c.Py_DecRef(module_obj);
+                    c.PyMem_Free(def_ptr);
                     return null;
                 }
             }
@@ -169,7 +180,7 @@ fn classSlots(
 
 fn classFlags() c_uint {
     var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
-    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+    if (!@hasDecl(c, "Py_tp_dictoffset") and @hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
         flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
     }
     return flags;

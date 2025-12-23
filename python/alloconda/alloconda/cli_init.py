@@ -55,7 +55,7 @@ def is_url(value: str) -> bool:
 
 
 def save_alloconda_dependency(url: str, dest_dir: Path) -> None:
-    cmd = ["zig", "fetch", "--save-exact=alloconda", url]
+    cmd = ["zig", "fetch", "--save=alloconda", url]
     click.echo(f"Running: {cmd}")
     try:
         subprocess.run(cmd, check=True, cwd=dest_dir)
