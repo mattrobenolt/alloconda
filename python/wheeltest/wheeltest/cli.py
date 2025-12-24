@@ -161,6 +161,11 @@ def run_cmd(
 
 def build_wheel(package_dir: Path, python_version: str) -> Path:
     """Build a native wheel for the given Python version."""
+    # Update alloconda dependency to pick up local changes
+    run_cmd(
+        ["zig", "fetch", "--save", "../../"],
+        cwd=package_dir,
+    )
     run_cmd(
         ["alloconda", "wheel", "--python-version", python_version],
         cwd=package_dir,
@@ -239,7 +244,15 @@ def run_tests(
         if conftest.exists():
             shutil.copy(conftest, Path(tmpdir) / "conftest.py")
 
-        cmd = [str(python_path), "-m", "pytest", str(tmp_tests), *pytest_args]
+        cmd = [
+            str(python_path),
+            "-X",
+            "faulthandler",
+            "-m",
+            "pytest",
+            str(tmp_tests),
+            *pytest_args,
+        ]
         # Run from workdir (the venv dir) to avoid source tree in Python path
         result = run_cmd(cmd, cwd=workdir, check=False)
         return result.returncode == 0

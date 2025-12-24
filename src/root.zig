@@ -13,6 +13,30 @@ const DefaultTypeStorage = extern struct {
 };
 const DefaultDictOffset: c.Py_ssize_t = @offsetOf(DefaultTypeStorage, "dict");
 
+// Manual definition of PyMemberDef since cimport marks it as opaque.
+// This matches the C struct in structmember.h.
+const PyMemberDef = extern struct {
+    name: ?[*:0]const u8,
+    type: c_int,
+    offset: c.Py_ssize_t,
+    flags: c_int,
+    doc: ?[*:0]const u8,
+};
+
+// PyMemberDef for __dict__ on Python <3.12 (where MANAGED_DICT isn't available).
+// T_OBJECT_EX = 16, READONLY would be 1 but we want read-write so flags = 0.
+const T_OBJECT_EX: c_int = 16;
+const dictMemberDef: [2]PyMemberDef = .{
+    .{
+        .name = "__dict__",
+        .type = T_OBJECT_EX,
+        .offset = DefaultDictOffset,
+        .flags = 0,
+        .doc = null,
+    },
+    .{ .name = null, .type = 0, .offset = 0, .flags = 0, .doc = null },
+};
+
 fn managedDictGcEnabled() bool {
     if (!@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) return false;
     const has_visit = @hasDecl(c, "PyObject_VisitManagedDict") or @hasDecl(c, "_PyObject_VisitManagedDict");
@@ -123,6 +147,13 @@ pub const Class = struct {
             c.Py_DecRef(type_obj);
             return false;
         }
+        // For Python <3.12, we need to set tp_dictoffset manually after type creation.
+        // This enables attribute storage via __dict__. The slot API doesn't support
+        // setting tp_dictoffset directly, so we modify the type object here.
+        if (comptime !managedDictGcEnabled()) {
+            const tp: *c.PyTypeObject = @ptrCast(type_obj);
+            tp.tp_dictoffset = DefaultDictOffset;
+        }
         if (c.PyModule_AddObject(module_obj, @ptrCast(self.attr_name.ptr), type_obj) != 0) {
             c.Py_DecRef(type_obj);
             return false;
@@ -152,13 +183,11 @@ fn classSlots(
     comptime methods_ptr: ?*anyopaque,
     comptime doc: ?[:0]const u8,
 ) [*c]const c.PyType_Slot {
-    const managed_dict = @hasDecl(c, "Py_TPFLAGS_MANAGED_DICT");
-    const use_dict_offset = !managed_dict and @hasDecl(c, "Py_tp_dictoffset");
-    const use_gc = managedDictGcEnabled();
-    const new_fn: ?*anyopaque = if (use_dict_offset)
-        @ptrCast(@constCast(&allocondaTypeNew))
-    else
-        @ptrCast(@constCast(&c.PyType_GenericNew));
+    // For Python 3.12+, use managed dict with GC support.
+    // For older Python (3.10, 3.11), use tp_dictoffset for __dict__ support.
+    const use_gc = comptime managedDictGcEnabled();
+    const new_fn: ?*anyopaque = @ptrCast(@constCast(&allocondaTypeNew));
+    const dealloc_fn: ?*anyopaque = @ptrCast(@constCast(&allocondaTypeDealloc));
     const traverse_fn: ?*anyopaque = if (use_gc)
         @ptrCast(@constCast(&allocondaTypeTraverse))
     else
@@ -171,20 +200,17 @@ fn classSlots(
         @ptrCast(@constCast(&c.PyObject_GC_Del))
     else
         null;
+
+    // For non-GC types (Python <3.12), we use Py_tp_members with a __dict__ member
+    // to enable attribute storage on instances.
+    const members_ptr: ?*anyopaque = @ptrCast(@constCast(&dictMemberDef));
+
     if (doc) |doc_text| {
-        if (use_dict_offset) {
-            return @ptrCast(&[_]c.PyType_Slot{
-                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-                .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
-                .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
-                .{ .slot = 0, .pfunc = null },
-            });
-        }
         if (use_gc) {
             return @ptrCast(&[_]c.PyType_Slot{
                 .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
                 .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
                 .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
                 .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
                 .{ .slot = c.Py_tp_free, .pfunc = free_fn },
@@ -192,58 +218,60 @@ fn classSlots(
                 .{ .slot = 0, .pfunc = null },
             });
         }
+        // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
+        // NOTE: We intentionally omit Py_tp_doc for non-GC types because Python
+        // tries to free() the tp_doc string on heap types, which crashes with static strings.
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
             .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-            .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
+            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+            .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
             .{ .slot = 0, .pfunc = null },
         });
     }
 
-    if (use_dict_offset) {
-        return @ptrCast(&[_]c.PyType_Slot{
-            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-            .{ .slot = c.Py_tp_dictoffset, .pfunc = @ptrFromInt(@as(usize, @intCast(DefaultDictOffset))) },
-            .{ .slot = 0, .pfunc = null },
-        });
-    }
     if (use_gc) {
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
             .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
             .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
             .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
             .{ .slot = c.Py_tp_free, .pfunc = free_fn },
             .{ .slot = 0, .pfunc = null },
         });
     }
+    // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
     return @ptrCast(&[_]c.PyType_Slot{
         .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
         .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+        .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+        .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
         .{ .slot = 0, .pfunc = null },
     });
 }
 
 fn classFlags() c_uint {
     var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
-    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+    // Only use MANAGED_DICT when we have the GC helpers to support it.
+    // Python 3.11 has the flag but lacks PyObject_VisitManagedDict/ClearManagedDict,
+    // so we must not set it there or we get segfaults during GC.
+    // Must use comptime to avoid referencing non-existent symbols on older Python.
+    if (comptime managedDictGcEnabled()) {
         flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
-    }
-    if (managedDictGcEnabled()) {
         flags |= @intCast(c.Py_TPFLAGS_HAVE_GC);
     }
     return flags;
 }
 
 fn classBasicSize() usize {
-    if (@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) {
+    // For Python 3.12+, MANAGED_DICT handles __dict__ storage.
+    // For older Python, we need space for the dict pointer (tp_dictoffset).
+    if (comptime managedDictGcEnabled()) {
         return @sizeOf(c.PyObject);
-    }
-    if (@hasDecl(c, "Py_tp_dictoffset")) {
+    } else {
         return @sizeOf(DefaultTypeStorage);
     }
-    return @sizeOf(c.PyObject);
 }
 
 fn allocondaTypeNew(
@@ -252,14 +280,50 @@ fn allocondaTypeNew(
     kwargs: ?*c.PyObject,
 ) callconv(.c) ?*c.PyObject {
     const obj = c.PyType_GenericNew(type_obj, args, kwargs) orelse return null;
-    if (@hasDecl(c, "Py_tp_dictoffset")) {
+    // For non-GC types (Python <3.12), initialize the dict slot with an empty dict.
+    // On 3.12+, MANAGED_DICT handles this automatically.
+    // We need a real dict (not NULL) because T_OBJECT_EX raises AttributeError for NULL.
+    if (comptime !managedDictGcEnabled()) {
         const offset: usize = @intCast(DefaultDictOffset);
         const base: [*]u8 = @ptrCast(@constCast(obj));
         const slot: *?*c.PyObject = @ptrCast(@alignCast(base + offset));
-        slot.* = null;
+        slot.* = c.PyDict_New();
     }
     return obj;
 }
+
+// GC traverse/clear helpers - use comptime selection to avoid referencing
+// symbols that don't exist on older Python versions.
+const GcHelpers = if (@hasDecl(c, "PyObject_VisitManagedDict"))
+    struct {
+        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
+            return c.PyObject_VisitManagedDict(obj, visitfn, arg);
+        }
+        fn clear(obj: *c.PyObject) void {
+            c.PyObject_ClearManagedDict(obj);
+        }
+    }
+else if (@hasDecl(c, "_PyObject_VisitManagedDict"))
+    struct {
+        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
+            return c._PyObject_VisitManagedDict(obj, visitfn, arg);
+        }
+        fn clear(obj: *c.PyObject) void {
+            c._PyObject_ClearManagedDict(obj);
+        }
+    }
+else
+    struct {
+        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
+            _ = obj;
+            _ = visitfn;
+            _ = arg;
+            return 0;
+        }
+        fn clear(obj: *c.PyObject) void {
+            _ = obj;
+        }
+    };
 
 fn allocondaTypeTraverse(
     self: ?*c.PyObject,
@@ -267,26 +331,53 @@ fn allocondaTypeTraverse(
     arg: ?*anyopaque,
 ) callconv(.c) c_int {
     const obj = self orelse return 0;
-    if (@hasDecl(c, "PyObject_VisitManagedDict")) {
-        return c.PyObject_VisitManagedDict(obj, visit, arg);
-    }
-    if (@hasDecl(c, "_PyObject_VisitManagedDict")) {
-        return c._PyObject_VisitManagedDict(obj, visit, arg);
-    }
-    return 0;
+    return GcHelpers.visit(obj, visit, arg);
 }
 
 fn allocondaTypeClear(self: ?*c.PyObject) callconv(.c) c_int {
     const obj = self orelse return 0;
-    if (@hasDecl(c, "PyObject_ClearManagedDict")) {
-        c.PyObject_ClearManagedDict(obj);
-        return 0;
-    }
-    if (@hasDecl(c, "_PyObject_ClearManagedDict")) {
-        c._PyObject_ClearManagedDict(obj);
-        return 0;
-    }
+    GcHelpers.clear(obj);
     return 0;
+}
+
+fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
+    const obj = self orelse return;
+
+    // IMPORTANT: For heap types, we must save the type reference before freeing,
+    // then DECREF the type AFTER freeing the object. This is critical for Python 3.11+
+    // where heap type lifecycle management changed.
+    const type_obj: *c.PyTypeObject = @ptrCast(c.Py_TYPE(obj));
+
+    // CRITICAL: If this type is GC-tracked, we must untrack BEFORE any cleanup.
+    // Failing to do this causes the GC to find dangling pointers during collection,
+    // which manifests as segfaults during interpreter shutdown (especially on 3.11).
+    if (@hasDecl(c, "PyObject_GC_UnTrack") and @hasDecl(c, "Py_TPFLAGS_HAVE_GC")) {
+        if ((type_obj.tp_flags & c.Py_TPFLAGS_HAVE_GC) != 0) {
+            c.PyObject_GC_UnTrack(obj);
+        }
+    }
+
+    // Clear the dict if present (for Py_tp_dictoffset path on Python <3.12)
+    if (@hasDecl(c, "Py_tp_dictoffset")) {
+        const offset: usize = @intCast(DefaultDictOffset);
+        const base: [*]u8 = @ptrCast(obj);
+        const slot: *?*c.PyObject = @ptrCast(@alignCast(base + offset));
+        if (slot.*) |dict| {
+            c.Py_DecRef(dict);
+            slot.* = null;
+        }
+    }
+
+    // Free the object memory using the type's tp_free slot.
+    // This handles both GC and non-GC types correctly:
+    // - For non-GC types: tp_free = PyObject_Free
+    // - For GC types: tp_free = PyObject_GC_Del
+    if (type_obj.tp_free) |free_fn| {
+        free_fn(obj);
+    }
+
+    // LAST: Decref the type (required for heap types)
+    c.Py_DecRef(@ptrCast(type_obj));
 }
 
 /// Wrapper for a Python object with ownership tracking.
@@ -309,6 +400,12 @@ pub const Object = struct {
         if (self.owns_ref) {
             c.Py_DecRef(self.ptr);
         }
+    }
+
+    /// Increment the reference count and return an owned Object.
+    pub fn incref(self: Object) Object {
+        c.Py_IncRef(self.ptr);
+        return .{ .ptr = self.ptr, .owns_ref = true };
     }
 
     /// Convert to a Zig value.
@@ -841,7 +938,10 @@ pub fn isBytes(obj: *c.PyObject) bool {
 
 /// Return true if the object is a bool.
 pub fn isBool(obj: *c.PyObject) bool {
-    return c.PyBool_Check(obj) != 0;
+    // Avoid using PyBool_Check macro which relies on _PyObject_CAST_CONST
+    // that Zig can't translate on Python 3.10. Instead, compare type directly.
+    const obj_type = c.Py_TYPE(obj);
+    return obj_type == &c.PyBool_Type;
 }
 
 /// Return true if the object is an int.

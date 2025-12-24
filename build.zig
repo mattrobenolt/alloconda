@@ -3,7 +3,6 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const python = pythonOptions(b, .{});
 
     const mod = b.addModule("alloconda", .{
         .root_source_file = b.path("src/root.zig"),
@@ -12,7 +11,6 @@ pub fn build(b: *std.Build) void {
         .strip = optimize != .Debug,
         .link_libc = true,
     });
-    mod.addSystemIncludePath(python.include_path);
 
     const mod_tests = b.addTest(.{ .root_module = mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -49,6 +47,11 @@ pub fn addPythonLibrary(b: *std.Build, options: LibraryOptions) *std.Build.Step.
 
     user_module.link_libc = true;
     user_module.addSystemIncludePath(python.include_path);
+
+    // Also add include path to the alloconda module if it's imported
+    if (user_module.import_table.get("alloconda")) |alloc_mod| {
+        alloc_mod.addSystemIncludePath(python.include_path);
+    }
 
     const entry_source =
         \\const std = @import("std");
@@ -105,13 +108,21 @@ pub fn addPythonLibrary(b: *std.Build, options: LibraryOptions) *std.Build.Step.
 pub fn pythonOptions(b: *std.Build, options: struct {
     include_path: ?[]const u8 = null,
 }) Options {
+    // If include_path is provided directly, use it
+    if (options.include_path) |path| {
+        return .{
+            .include_path = .{ .cwd_relative = path },
+        };
+    }
+
+    // Check for build option (only declare once per build graph)
     const include = b.option(
         []const u8,
         "python-include",
         "Path to Python include directory",
     );
 
-    if (include orelse options.include_path) |path| {
+    if (include) |path| {
         return .{
             .include_path = .{ .cwd_relative = path },
         };

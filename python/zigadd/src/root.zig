@@ -1,5 +1,14 @@
 const py = @import("alloconda");
 
+fn adder_add(self: py.Object, a: i64, b: i64) i64 {
+    _ = self;
+    return a + b;
+}
+
+fn adder_identity(self: py.Object) py.Object {
+    return self.incref();
+}
+
 const Adder = py.class("Adder", "Simple adder class", .{
     .add = py.method(adder_add, .{ .self = true, .doc = "Add two integers" }),
     .identity = py.method(adder_identity, .{ .self = true, .doc = "Return self" }),
@@ -129,13 +138,4 @@ fn to_upper(value: []const u8) CallError![]const u8 {
     const out = obj.callMethod0("upper") orelse return error.PythonError;
     defer out.deinit();
     return out.as([]const u8) orelse return error.PythonError;
-}
-
-fn adder_add(self: py.Object, a: i64, b: i64) i64 {
-    _ = self;
-    return a + b;
-}
-
-fn adder_identity(self: py.Object) py.Object {
-    return self;
 }
