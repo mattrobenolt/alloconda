@@ -1,4 +1,12 @@
+"""Python-build-standalone (PBS) header fetching and caching.
+
+This module downloads Python headers from the python-build-standalone project
+for cross-compilation. It uses the SHA256SUMS file for fast discovery instead
+of the GitHub API.
+"""
+
 import ast
+import hashlib
 import json
 import os
 import re
@@ -9,8 +17,9 @@ from pathlib import Path
 import click
 import httpx
 
-PBS_RELEASE_URL = (
-    "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest"
+PBS_SHA256SUMS_URL = "https://github.com/astral-sh/python-build-standalone/releases/latest/download/SHA256SUMS"
+PBS_DOWNLOAD_BASE = (
+    "https://github.com/astral-sh/python-build-standalone/releases/download"
 )
 PBS_CACHE_ENV = "ALLOCONDA_PBS_CACHE"
 
@@ -19,8 +28,9 @@ PBS_CACHE_ENV = "ALLOCONDA_PBS_CACHE"
 class PbsAsset:
     name: str
     url: str
+    sha256: str
     version_base: str
-    build_id: str | None
+    build_id: str
     target: str
     flavor: str
 
@@ -35,6 +45,7 @@ class PbsEntry:
     ext_suffix: str
     asset_name: str
     asset_url: str
+    sha256: str | None = None
 
 
 def cache_root(explicit: Path | None) -> Path:
@@ -47,40 +58,60 @@ def cache_root(explicit: Path | None) -> Path:
 
 
 def fetch_release_assets() -> list[PbsAsset]:
-    headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    resp = httpx.get(PBS_RELEASE_URL, headers=headers, timeout=30.0)
+    """Fetch available assets from SHA256SUMS file.
+
+    This is much faster than the GitHub API as it's a single small file.
+    """
+    resp = httpx.get(PBS_SHA256SUMS_URL, timeout=30.0, follow_redirects=True)
     resp.raise_for_status()
-    data = resp.json()
+    return parse_sha256sums(resp.text)
+
+
+def parse_sha256sums(content: str) -> list[PbsAsset]:
+    """Parse SHA256SUMS file content into PbsAsset objects."""
     assets = []
-    for asset in data.get("assets", []):
-        parsed = parse_asset(asset["name"], asset["browser_download_url"])
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Format: <sha256>  <filename>
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        sha256, filename = parts
+        parsed = parse_asset_filename(filename.strip(), sha256)
         if parsed:
             assets.append(parsed)
     return assets
 
 
-def parse_asset(name: str, url: str) -> PbsAsset | None:
+def parse_asset_filename(name: str, sha256: str) -> PbsAsset | None:
+    """Parse a PBS asset filename into its components."""
     if not name.startswith("cpython-"):
         return None
+    # We only care about .tar.gz files (not .tar.zst)
     if not name.endswith(".tar.gz"):
         return None
+
     stem = name[len("cpython-") : -len(".tar.gz")]
     parts = stem.split("-")
     if len(parts) < 3:
         return None
+
     version_build = parts[0]
     flavor = parts[-1]
     target = "-".join(parts[1:-1])
-    if "+" in version_build:
-        version_base, build_id = version_build.split("+", 1)
-    else:
-        version_base, build_id = version_build, None
+
+    if "+" not in version_build:
+        return None
+    version_base, build_id = version_build.split("+", 1)
+
+    url = f"{PBS_DOWNLOAD_BASE}/{build_id}/{name}"
+
     return PbsAsset(
         name=name,
         url=url,
+        sha256=sha256,
         version_base=version_base,
         build_id=build_id,
         target=target,
@@ -105,14 +136,29 @@ def select_asset(
     version: str,
     target: str,
 ) -> PbsAsset:
+    """Select the best matching asset for a version and target."""
     candidates = [
         asset
         for asset in assets
         if asset.target == target and matches_version(version, asset.version_base)
     ]
     if not candidates:
-        raise RuntimeError(f"No PBS assets found for {version} on {target}")
+        available_versions = sorted(
+            {a.version_base for a in assets if a.target == target},
+            key=parse_version_parts,
+        )
+        if available_versions:
+            raise RuntimeError(
+                f"Python {version} not available for {target}. "
+                f"Available: {', '.join(available_versions)}"
+            )
+        available_targets = sorted({a.target for a in assets})
+        raise RuntimeError(
+            f"No PBS assets found for {target}. "
+            f"Available targets: {', '.join(available_targets[:10])}..."
+        )
 
+    # Pick the latest patch version
     versions = sorted(
         {asset.version_base for asset in candidates},
         key=parse_version_parts,
@@ -120,16 +166,12 @@ def select_asset(
     chosen_version = versions[-1]
     candidates = [asset for asset in candidates if asset.version_base == chosen_version]
 
+    # Prefer stripped > install_only > others
     flavor_order = {"install_only_stripped": 0, "install_only": 1}
 
     def sort_key(asset: PbsAsset) -> tuple[int, int]:
         flavor_rank = flavor_order.get(asset.flavor, 99)
-        build_rank = (
-            int(asset.build_id) if asset.build_id and asset.build_id.isdigit() else 0
-        )
-        build_rank = (
-            int(asset.build_id) if asset.build_id and asset.build_id.isdigit() else 0
-        )
+        build_rank = int(asset.build_id) if asset.build_id.isdigit() else 0
         return (flavor_rank, -build_rank)
 
     candidates.sort(key=sort_key)
@@ -145,58 +187,81 @@ def fetch_and_extract(
     force: bool,
     show_progress: bool = False,
 ) -> PbsEntry:
+    """Download and extract a PBS asset, returning the cache entry.
+
+    The tarball is deleted after extraction to save disk space.
+    """
     entry_dir = cache_dir / asset.target / asset.version_base
     meta_path = entry_dir / "metadata.json"
+
+    # Check if already cached with matching SHA256
     if meta_path.exists() and not force:
-        return load_entry(meta_path)
+        entry = load_entry(meta_path)
+        if entry.sha256 == asset.sha256:
+            return entry
 
     entry_dir.mkdir(parents=True, exist_ok=True)
     tar_path = entry_dir / asset.name
 
-    download_asset(asset, tar_path, show_progress)
+    try:
+        download_asset(asset, tar_path, show_progress)
+        verify_sha256(tar_path, asset.sha256, asset.name)
 
-    include_dir = None
-    sysconfig_path = None
+        include_dir = None
+        sysconfig_path = None
 
-    with tarfile.open(tar_path, "r:gz") as tf:
-        members = [m for m in tf.getmembers() if is_safe_member(m)]
-        sysconfig_member = next(
-            (
-                m
-                for m in members
-                if "_sysconfigdata" in m.name and m.name.endswith(".py")
-            ),
-            None,
+        with tarfile.open(tar_path, "r:gz") as tf:
+            members = [m for m in tf.getmembers() if is_safe_member(m)]
+
+            # Extract sysconfig
+            sysconfig_member = next(
+                (
+                    m
+                    for m in members
+                    if "_sysconfigdata" in m.name and m.name.endswith(".py")
+                ),
+                None,
+            )
+            if sysconfig_member:
+                sysconfig_path = entry_dir / sysconfig_member.name
+                tf.extract(sysconfig_member, entry_dir)
+
+            # Extract headers
+            include_members = [
+                m for m in members if m.name.startswith("python/include/")
+            ]
+            tf.extractall(entry_dir, members=include_members)
+            if include_members:
+                include_dir = resolve_python_include(entry_dir / "python" / "include")
+
+        if not include_dir or not sysconfig_path:
+            raise RuntimeError("PBS archive missing include/sysconfig data")
+
+        ext_suffix = read_ext_suffix(sysconfig_path)
+
+        entry = PbsEntry(
+            version=asset.version_base,
+            build_id=asset.build_id,
+            target=asset.target,
+            include_dir=include_dir,
+            sysconfig_path=sysconfig_path,
+            ext_suffix=ext_suffix,
+            asset_name=asset.name,
+            asset_url=asset.url,
+            sha256=asset.sha256,
         )
-        if sysconfig_member:
-            sysconfig_path = entry_dir / sysconfig_member.name
-            tf.extract(sysconfig_member, entry_dir)
+        write_entry(entry, meta_path)
+        return entry
 
-        include_members = [m for m in members if m.name.startswith("python/include/")]
-        tf.extractall(entry_dir, members=include_members)
-        if include_members:
-            include_dir = resolve_python_include(entry_dir / "python" / "include")
-
-    if not include_dir or not sysconfig_path:
-        raise RuntimeError("PBS archive missing include/sysconfig data")
-
-    ext_suffix = read_ext_suffix(sysconfig_path)
-
-    entry = PbsEntry(
-        version=asset.version_base,
-        build_id=asset.build_id,
-        target=asset.target,
-        include_dir=include_dir,
-        sysconfig_path=sysconfig_path,
-        ext_suffix=ext_suffix,
-        asset_name=asset.name,
-        asset_url=asset.url,
-    )
-    write_entry(entry, meta_path)
-    return entry
+    finally:
+        # Always clean up tarball to save disk space
+        if tar_path.exists():
+            tar_path.unlink()
 
 
 def download_asset(asset: PbsAsset, path: Path, show_progress: bool) -> None:
+    """Download a PBS asset to the given path."""
+    click.echo(f"Downloading {asset.name}")
     with httpx.stream("GET", asset.url, timeout=120.0, follow_redirects=True) as resp:
         resp.raise_for_status()
         total = resp.headers.get("Content-Length")
@@ -205,7 +270,7 @@ def download_asset(asset: PbsAsset, path: Path, show_progress: bool) -> None:
             if show_progress:
                 with click.progressbar(
                     length=length,
-                    label=f"Downloading {asset.name}",
+                    label="  Progress",
                     show_eta=True,
                 ) as bar:
                     for chunk in resp.iter_bytes():
@@ -216,7 +281,22 @@ def download_asset(asset: PbsAsset, path: Path, show_progress: bool) -> None:
                     f.write(chunk)
 
 
+def verify_sha256(path: Path, expected: str, name: str) -> None:
+    """Verify the SHA256 hash of a downloaded file."""
+    sha256 = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            sha256.update(chunk)
+    actual = sha256.hexdigest()
+    if actual != expected:
+        path.unlink()  # Remove corrupted file
+        raise RuntimeError(
+            f"SHA256 mismatch for {name}: expected {expected}, got {actual}"
+        )
+
+
 def read_ext_suffix(sysconfig_path: Path) -> str:
+    """Extract EXT_SUFFIX from a sysconfig data file."""
     content = sysconfig_path.read_text()
     tree = ast.parse(content)
     for node in tree.body:
@@ -233,6 +313,7 @@ def read_ext_suffix(sysconfig_path: Path) -> str:
 
 
 def write_entry(entry: PbsEntry, path: Path) -> None:
+    """Write a cache entry metadata file."""
     path.write_text(
         json.dumps(
             {
@@ -244,6 +325,7 @@ def write_entry(entry: PbsEntry, path: Path) -> None:
                 "ext_suffix": entry.ext_suffix,
                 "asset_name": entry.asset_name,
                 "asset_url": entry.asset_url,
+                "sha256": entry.sha256,
             },
             indent=2,
             sort_keys=True,
@@ -253,6 +335,7 @@ def write_entry(entry: PbsEntry, path: Path) -> None:
 
 
 def load_entry(path: Path) -> PbsEntry:
+    """Load a cache entry from its metadata file."""
     data = json.loads(path.read_text())
     entry = PbsEntry(
         version=data["version"],
@@ -263,15 +346,18 @@ def load_entry(path: Path) -> PbsEntry:
         ext_suffix=data["ext_suffix"],
         asset_name=data["asset_name"],
         asset_url=data["asset_url"],
+        sha256=data.get("sha256"),
     )
     return fix_entry_include_dir(entry, path)
 
 
 def resolve_python_include(include_root: Path) -> Path | None:
+    """Find the Python.h directory within an include root."""
     if include_root.is_dir() and (include_root / "Python.h").is_file():
         return include_root
     if not include_root.is_dir():
         return None
+
     candidates = [
         child
         for child in include_root.iterdir()
@@ -296,6 +382,7 @@ def resolve_python_include(include_root: Path) -> Path | None:
 
 
 def fix_entry_include_dir(entry: PbsEntry, meta_path: Path) -> PbsEntry:
+    """Fix include_dir path if it points to wrong location."""
     resolved = resolve_python_include(entry.include_dir)
     if not resolved or resolved == entry.include_dir:
         return entry
@@ -305,6 +392,7 @@ def fix_entry_include_dir(entry: PbsEntry, meta_path: Path) -> PbsEntry:
 
 
 def is_safe_member(member: tarfile.TarInfo) -> bool:
+    """Check if a tar member is safe to extract (no path traversal)."""
     path = Path(member.name)
     if path.is_absolute():
         return False
@@ -316,6 +404,7 @@ def find_cached_entry(
     version: str,
     target: str,
 ) -> PbsEntry | None:
+    """Find a cached entry matching the version and target."""
     target_dir = cache_dir / target
     if not target_dir.is_dir():
         return None
@@ -337,6 +426,7 @@ def find_cached_entry(
 
 
 def resolve_versions_for_target(assets: list[PbsAsset], target: str) -> list[str]:
+    """Get all available Python versions for a target, one per minor version."""
     versions: dict[tuple[int, int], str] = {}
     for asset in assets:
         if asset.target != target:
