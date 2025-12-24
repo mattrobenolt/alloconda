@@ -62,6 +62,7 @@ def build_wheel(
         skip_build=_bool_setting(settings, "skip-build", False),
         include=config_list(settings, "include"),
         exclude=config_list(settings, "exclude"),
+        fetch=_bool_setting(settings, "fetch", True),
     )
     return wheel_path.name
 

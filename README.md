@@ -28,11 +28,11 @@ creates a default Python package under `python/<project_name>/`.
 ## Build wheels
 
 ```bash
-uvx alloconda wheel-all --python-version 3.14 --include-musllinux --fetch
+uvx alloconda wheel-all --python-version 3.14 --include-musllinux
 ```
 
-This builds a multi-platform wheel matrix in `dist/` using cached
-python-build-standalone headers.
+This builds a multi-platform wheel matrix in `dist/`, automatically fetching
+python-build-standalone headers as needed.
 
 ## Documentation
 

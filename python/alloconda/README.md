@@ -44,9 +44,10 @@ Options:
 - `--ext-suffix`: override the extension suffix for cross builds
 - `--out-dir`: wheel output directory (default: `dist/`)
 - `--skip-build`: skip `zig build` if you already built the library
+- `--no-fetch`: disable automatic header downloads
 
-`wheel-all` downloads missing headers by default. Use `--no-fetch` to require a
-pre-populated cache.
+Missing python-build-standalone headers are fetched automatically when
+`--python-version` is specified. Use `--no-fetch` to require a pre-populated cache.
 If `--python-tag` is omitted, it defaults from `--python-version` (e.g. `cp314`).
 
 ### `alloconda wheel-all`

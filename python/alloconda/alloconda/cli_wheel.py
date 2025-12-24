@@ -61,6 +61,11 @@ from .wheel_builder import build_wheel
 @click.option("--skip-build", is_flag=True, help="Skip zig build step")
 @click.option("--no-init", is_flag=True, help="Skip __init__.py generation")
 @click.option("--force-init", is_flag=True, help="Overwrite existing __init__.py")
+@click.option(
+    "--fetch/--no-fetch",
+    default=True,
+    help="Fetch missing headers automatically",
+)
 def wheel(
     release: bool,
     debug: bool,
@@ -84,6 +89,7 @@ def wheel(
     skip_build: bool,
     no_init: bool,
     force_init: bool,
+    fetch: bool,
 ) -> None:
     """Build a single wheel for the current project."""
     project_root = project_dir or find_project_dir(Path.cwd())
@@ -146,5 +152,6 @@ def wheel(
         skip_build=skip_build,
         include=include,
         exclude=exclude,
+        fetch=fetch,
     )
     click.echo(f"✓ Built wheel {wheel_path}")

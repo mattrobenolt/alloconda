@@ -21,8 +21,8 @@ uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 
 The headers are cached locally and reused across builds.
 
-`wheel-all` fetches missing headers by default; use `--no-fetch` to disable
-network access.
+Both `wheel` and `wheel-all` fetch missing headers automatically; use `--no-fetch`
+to disable network access.
 
 ## Build a single cross-target wheel
 
@@ -43,9 +43,9 @@ uvx alloconda wheel --python-version 3.14 --platform-tag macosx_14_0_arm64 --arc
 uvx alloconda wheel --python-version 3.14 --platform-tag win_amd64 --arch x86_64
 ```
 
-When `--python-version` is set, alloconda uses cached headers to select the right
-extension suffix. If you are cross-building without cached headers, pass
-`--ext-suffix` explicitly.
+When `--python-version` is set, alloconda fetches headers automatically and uses
+them to select the right extension suffix. Use `--no-fetch` to require a
+pre-populated cache.
 
 ## Build a full matrix
 

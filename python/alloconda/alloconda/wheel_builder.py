@@ -26,7 +26,13 @@ from .cli_helpers import (
     should_include_path,
     write_init_py,
 )
-from .pbs import cache_root, find_cached_entry
+from .pbs import (
+    cache_root,
+    fetch_and_extract,
+    fetch_release_assets,
+    find_cached_entry,
+    select_asset,
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,7 @@ def build_wheel(
     skip_build: bool,
     include: list[str] | None,
     exclude: list[str] | None,
+    fetch: bool = True,
 ) -> Path:
     python_include = None
     if python_version:
@@ -75,10 +82,14 @@ def build_wheel(
         cache_dir = cache_root(python_cache)
         entry = find_cached_entry(cache_dir, python_version, target)
         if entry is None:
-            raise click.ClickException(
-                "Python headers not cached. Run: "
-                f"alloconda python fetch --version {python_version} --pbs-target {target}"
-            )
+            if not fetch:
+                raise click.ClickException(
+                    "Python headers not cached. Run with --fetch or: "
+                    f"alloconda python fetch --version {python_version} --pbs-target {target}"
+                )
+            assets = fetch_release_assets()
+            asset = select_asset(assets, python_version, target)
+            entry = fetch_and_extract(asset, cache_dir, force=False, show_progress=True)
         python_include = str(entry.include_dir)
         if ext_suffix is None:
             ext_suffix = entry.ext_suffix
