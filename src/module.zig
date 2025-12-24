@@ -145,6 +145,7 @@ pub const Class = struct {
     name: [:0]const u8,
     attr_name: [:0]const u8,
     slots: [*c]const c.PyType_Slot,
+    doc: ?[:0]const u8,
 
     fn create(self: *const Class) ?*c.PyObject {
         var spec = c.PyType_Spec{
@@ -169,6 +170,17 @@ pub const Class = struct {
         if (comptime !managedDictGcEnabled()) {
             const tp: *c.PyTypeObject = @ptrCast(type_obj);
             tp.tp_dictoffset = DefaultDictOffset;
+            // Set __doc__ via the attribute API for heap types on Python <3.12.
+            // For heap types, Python stores __doc__ in the type dict, not tp_doc.
+            // Setting tp_doc directly doesn't update the dict entry.
+            if (self.doc) |doc_text| {
+                const doc_obj = c.PyUnicode_FromStringAndSize(doc_text.ptr, @intCast(doc_text.len));
+                if (doc_obj) |doc| {
+                    _ = c.PyObject_SetAttrString(type_obj, "__doc__", doc);
+                    c.Py_DecRef(doc);
+                }
+                // If creating the string fails, we silently leave __doc__ as None.
+            }
         }
         if (c.PyModule_AddObject(module_obj, @ptrCast(self.attr_name.ptr), type_obj) != 0) {
             c.Py_DecRef(type_obj);
@@ -192,6 +204,7 @@ pub fn class(
         .name = name,
         .attr_name = shortTypeName(name),
         .slots = slots,
+        .doc = doc,
     };
 }
 
@@ -447,6 +460,7 @@ fn qualifyClass(comptime module_name: []const u8, comptime class_def: Class) Cla
         .name = full_name,
         .attr_name = class_def.attr_name,
         .slots = class_def.slots,
+        .doc = class_def.doc,
     };
 }
 

@@ -90,6 +90,12 @@ switch (T) {
   (override with `ALLOCONDA_PBS_CACHE`).
 - Document publishing via `twine` instead of adding a publish command.
 
+## Commits
+
+This is prerelease software. Keep commit messages concise - a short summary line
+is usually enough. Descriptions are fine when helpful, but avoid itemized lists
+that enumerate every change.
+
 ## Documentation hygiene
 
 - Keep `README.md`, `python/alloconda/README.md`, and `PLAN.md` consistent.

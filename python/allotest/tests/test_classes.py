@@ -1,7 +1,6 @@
 """Tests for class definitions, self parameter, and multiple classes."""
 
 import gc
-import sys
 import weakref
 
 import pytest
@@ -159,19 +158,10 @@ class TestMultipleClasses:
 class TestClassDocstrings:
     """Test that class docstrings are preserved."""
 
-    # TODO: Fix tp_doc on Python < 3.12. Currently omitted because Python tries
-    # to free() the static string, causing a crash. Need to PyMem_Malloc a copy.
-
-    @pytest.mark.skipif(
-        sys.version_info < (3, 12), reason="tp_doc not set on Python < 3.12"
-    )
     def test_adder_has_docstring(self) -> None:
         assert allotest.Adder.__doc__ is not None
         assert "adder" in allotest.Adder.__doc__.lower()
 
-    @pytest.mark.skipif(
-        sys.version_info < (3, 12), reason="tp_doc not set on Python < 3.12"
-    )
     def test_counter_has_docstring(self) -> None:
         assert allotest.Counter.__doc__ is not None
         assert "counter" in allotest.Counter.__doc__.lower()

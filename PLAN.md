@@ -18,6 +18,7 @@ small and pragmatic; update as we learn.
 
 ## Near-term ideas
 
+- `PyMemAllocator`: Zig `Allocator` interface backed by `PyMem_Malloc`/`PyMem_Free` for proper Python memory tracking.
 - Method defaults and `*args/**kwargs` capture helpers.
 - Properties and common dunder methods (`__repr__`, `__len__`, `__iter__`).
 - Richer conversions: tuples, sequences, dict/list of primitives, bytes views.
