@@ -3,8 +3,9 @@
 from pathlib import Path
 
 import pytest
-from alloconda.wheel_builder import copy_package_tree
 from pyfakefs.fake_filesystem import FakeFilesystem
+
+from alloconda.wheel_builder import copy_package_tree
 
 
 @pytest.fixture

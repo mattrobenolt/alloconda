@@ -383,7 +383,12 @@ def normalize_dist_name(name: str) -> str:
 
 def default_platform_tag() -> str:
     tag = sysconfig.get_platform()
-    return tag.replace("-", "_").replace(".", "_")
+    tag = tag.replace("-", "_").replace(".", "_")
+    # Default to manylinux_2_28 on Linux (generic linux_* tags are rejected by PyPI)
+    if tag.startswith("linux_"):
+        arch = tag.split("_", 1)[1]
+        return f"manylinux_2_28_{arch}"
+    return tag
 
 
 def resolve_arch(arch: str | None) -> str:
@@ -406,6 +411,11 @@ def resolve_platform_tag(
     if platform_tag and (manylinux or musllinux):
         raise click.ClickException(
             "Use either --platform-tag or --manylinux/--musllinux"
+        )
+    if platform_tag and platform_tag.startswith("linux_"):
+        raise click.ClickException(
+            "Generic linux_* platform tags are not accepted by PyPI. "
+            "Use --manylinux or --musllinux instead."
         )
     if manylinux:
         return f"{normalize_manylinux(manylinux)}_{resolve_arch(arch)}"
