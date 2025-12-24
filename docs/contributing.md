@@ -98,4 +98,4 @@ Cloudflare Pages project for External CI and set these GitHub secrets:
 
 ## Roadmap
 
-The short-term roadmap lives in `PLAN.md` at the repo root.
+The roadmap is tracked in [GitHub Issues](https://github.com/mattrobenolt/alloconda/issues).

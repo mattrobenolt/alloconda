@@ -39,6 +39,7 @@
             uvShellHook
             mdbook
             wrangler
+            gh
           ];
         };
       }

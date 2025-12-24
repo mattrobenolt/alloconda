@@ -84,5 +84,6 @@ switch (T) {
 
 ## Documentation hygiene
 
-- Keep `README.md`, `python/alloconda/README.md`, and `PLAN.md` consistent.
-- If you add/remove features, update the relevant README + plan entries.
+- Keep `README.md` and `python/alloconda/README.md` consistent.
+- If you add/remove features, update the relevant README.
+- Roadmap is tracked in [GitHub Issues](https://github.com/mattrobenolt/alloconda/issues).
