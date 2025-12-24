@@ -213,7 +213,9 @@ def assemble_wheel(
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp)
         staged_pkg = staging / package_dir.name
-        copy_package_tree(package_dir, staged_pkg, opts.include, opts.exclude)
+        copy_package_tree(
+            package_dir, staged_pkg, opts.include, opts.exclude, module_name
+        )
 
         ext_path = staged_pkg / f"{module_name}{opts.ext_suffix}"
         shutil.copy2(lib_path, ext_path)
@@ -242,6 +244,7 @@ def copy_package_tree(
     dst: Path,
     include: list[str] | None,
     exclude: list[str] | None,
+    module_name: str,
 ) -> None:
     for path in sorted(src.rglob("*")):
         if not path.is_file():
@@ -250,6 +253,11 @@ def copy_package_tree(
         if "__pycache__" in path.parts:
             continue
         if path.suffix in {".pyc", ".pyo"}:
+            continue
+        # Skip extension modules matching our module name - the correct one is copied separately
+        if path.suffix in {".so", ".dylib", ".pyd"} and path.name.startswith(
+            module_name
+        ):
             continue
         if not should_include_path(rel, include, exclude):
             continue

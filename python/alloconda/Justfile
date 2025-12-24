@@ -9,5 +9,8 @@ lint:
     ruff check
     ty check
 
+test:
+    uv run pytest tests/
+
 clean:
     rm -rf *.egg-info

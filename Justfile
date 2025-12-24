@@ -13,6 +13,9 @@ fmt:
 
 test: allotest-test
 
+alloconda-test:
+    cd python/alloconda && just test
+
 allotest:
     cd python/allotest && just clean build test
 
@@ -78,4 +81,4 @@ hello:
     cd python/hello_alloconda && alloconda develop
     python -c 'import hello_alloconda; print(hello_alloconda.hello("hello"))'
 
-ci: clean sync lint-all test zigzon zigzon-wheel hello
+ci: clean sync lint-all alloconda-test test zigzon zigzon-wheel hello
