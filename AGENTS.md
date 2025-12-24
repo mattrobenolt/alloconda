@@ -1,7 +1,6 @@
 # Agent Guide
 
-This file collects the project-specific expectations for automated coding agents.
-Keep it short and actionable; update it when workflows change.
+Alloconda is a Zig-first Python extension builder that facilitates creating and cross-compiling wheels. This file collects project-specific expectations for automated coding agents.
 
 ## Repo overview
 
@@ -28,12 +27,11 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 ## Workflow basics
 
 - This repo is a uv workspace. Use `uv add ...` for Python deps.
-- Prefer `just` recipes when they exist:
+- **Pre-commit:** Always run `just ci` before committing. This runs clean, sync, lint (all), tests, and examples.
+- **Linting:** `just lint` (Zig only) or `just lint-all` (Zig + Python).
+- **Testing:**
   - `just allotest`: build + pytest for the canonical test suite.
   - `just zigadd` / `just zigzon`: build + pytest for examples.
-  - `just lint`: `zig fmt --check` + `zlint`.
-- For wheels: `alloconda wheel`, `alloconda wheel-all`, `alloconda inspect`.
-- For editable installs: `alloconda develop` (uses pip or uv).
 
 ## Zig conventions
 
@@ -44,6 +42,7 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 - Use `py.method(fn, .{...})` explicitly (Zig 0.15 requirement).
 
 ### Style preferences
+- **Linting:** Enforced by `zlint`. Key rules: `no-print` (use logging/errors), `line-length` 120, `avoid-as` (casting).
 - Use short aliases for `std` imports when repeated often:
   ```zig
   const std = @import("std");
@@ -72,29 +71,16 @@ switch (T) {
 
 ## Python/CLI conventions
 
+- **Target:** Python 3.14+ (bleeding edge).
+- **Style:** strict `ruff` for linting/formatting.
+- **Typing:** `ty` is used for type checking. Run `cd python/alloconda && ty check`.
 - Click commands must have clear help strings (docstrings for entrypoints).
 - When adding new CLI flags, update `python/alloconda/README.md`.
-- Keep `pyproject.toml` build backend entries in example projects in sync.
 
-## Tests and validation
+## Packaging & Commits
 
-- Primary test suite: `just allotest` (204 tests covering all alloconda APIs).
-- Example modules: `just zigadd`, `just zigzon`.
-- CLI typing: `cd python/alloconda && ty check`.
-- Linting: `just lint` when touching Zig core.
-
-## Packaging notes
-
-- The build backend is `alloconda.build_backend`.
-- Cached python headers live under `~/.cache/alloconda/pbs`
-  (override with `ALLOCONDA_PBS_CACHE`).
-- Document publishing via `twine` instead of adding a publish command.
-
-## Commits
-
-This is prerelease software. Keep commit messages concise - a short summary line
-is usually enough. Descriptions are fine when helpful, but avoid itemized lists
-that enumerate every change.
+- **Backend:** `alloconda.build_backend`.
+- **Commits:** Keep messages concise. A short summary line is usually enough. Avoid itemized lists.
 
 ## Documentation hygiene
 
