@@ -26,6 +26,6 @@ multiple build hosts, start with the cross-compilation chapter.
 ## Versions
 
 - Zig 0.15
-- Python 3.14 (current testing target).
+- Python 3.10 – 3.14
 
 Start with the tutorial to scaffold a minimal project and build your first module.

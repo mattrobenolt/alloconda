@@ -6,6 +6,8 @@
 
 Alloconda is Zig-first Python extensions with cross-compiled wheels.
 
+**Supported versions:** Python 3.10 – 3.14, Zig 0.15
+
 Project links:
 - Docs: <https://alloconda.withmatt.com>
 - Repo: <https://github.com/mattrobenolt/alloconda>

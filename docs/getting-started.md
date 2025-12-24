@@ -5,7 +5,7 @@ This tutorial creates a tiny extension module that exposes `hello(name)`.
 ## Prerequisites
 
 - Zig 0.15.x.
-- Python 3.14.
+- Python 3.10+.
 - `uv` for project init and running the CLI via `uvx`.
 - Network access for `zig fetch` (or pass `--alloconda-path`).
 

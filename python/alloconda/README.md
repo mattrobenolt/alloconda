@@ -6,6 +6,11 @@
 
 Alloconda is Zig-first Python extensions with cross-compiled wheels.
 
+## Supported Versions
+
+- **Python**: 3.10 – 3.14
+- **Zig**: 0.15
+
 ## Commands
 
 ### `alloconda build`

@@ -71,7 +71,7 @@ switch (T) {
 
 ## Python/CLI conventions
 
-- **Target:** Python 3.14+ (bleeding edge).
+- **Target:** Python 3.10 – 3.14.
 - **Style:** strict `ruff` for linting/formatting.
 - **Typing:** `ty` is used for type checking. Run `cd python/alloconda && ty check`.
 - Click commands must have clear help strings (docstrings for entrypoints).
@@ -81,6 +81,7 @@ switch (T) {
 
 - **Backend:** `alloconda.build_backend`.
 - **Commits:** Keep messages concise. A short summary line is usually enough. Avoid itemized lists.
+- **IMPORTANT:** Never run `git commit` or `git push` without explicit approval from the user. Always ask first.
 
 ## Documentation hygiene
 
