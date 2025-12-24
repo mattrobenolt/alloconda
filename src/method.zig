@@ -342,6 +342,12 @@ fn callAndConvert(comptime func: anytype, args_tuple: anytype) ?*c.PyObject {
     }
 
     const value = @call(.auto, func, args_tuple);
+    // For optional types, check if null + exception set (user called py.raise)
+    if (comptime isOptionalType(ret_type)) {
+        if (value == null and errors.errorOccurred()) {
+            return null; // Propagate the exception
+        }
+    }
     return toPy(ret_type, value);
 }
 

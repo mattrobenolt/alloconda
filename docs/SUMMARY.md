@@ -2,6 +2,7 @@
 
 - [Introduction](README.md)
 - [Tutorial: your first module](getting-started.md)
+- [Manual setup](manual-setup.md)
 - [Project layout](project-layout.md)
 - [Writing modules](zig-api.md)
 - [Working with Python types](types.md)
