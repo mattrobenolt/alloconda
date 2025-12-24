@@ -1,5 +1,5 @@
 .{
-    .name = .zigadd,
+    .name = .allotest,
     .version = "0.0.0",
     .dependencies = .{
         .alloconda = .{
@@ -7,6 +7,6 @@
         },
     },
     .minimum_zig_version = "0.15.2",
-    .fingerprint = 0x2bf3ff778d90b82e,
+    .fingerprint = 0xa81ad7708f6c205a,
     .paths = .{ "build.zig", "build.zig.zon", "src" },
 }

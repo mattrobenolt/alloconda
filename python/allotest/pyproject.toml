@@ -1,11 +1,10 @@
 [project]
-name = "zigadd"
+name = "allotest"
 version = "0.1.0"
-description = "Add your description here"
+description = "Comprehensive test suite for alloconda"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 dependencies = []
 

@@ -49,6 +49,7 @@ fn MethodSpec(comptime func: anytype) type {
 
 /// Build an array of PyMethodDef from a struct of methods.
 pub fn buildMethodDefs(comptime methods: anytype) [methodCount(methods) + 1]c.PyMethodDef {
+    @setEvalBranchQuota(100000);
     const info = @typeInfo(@TypeOf(methods));
     if (info != .@"struct") {
         @compileError("methods must be a struct literal");

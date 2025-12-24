@@ -249,7 +249,8 @@ pub const Bytes = struct {
     /// Borrow the underlying bytes as a slice.
     pub fn slice(self: Bytes) ?[]const u8 {
         var byte_len: c.Py_ssize_t = 0;
-        const raw = c.PyBytes_AsStringAndSize(self.obj.ptr, &byte_len) orelse return null;
+        var raw: [*c]u8 = null;
+        if (c.PyBytes_AsStringAndSize(self.obj.ptr, &raw, &byte_len) != 0) return null;
         const ptr: [*]const u8 = @ptrCast(raw);
         return ptr[0..@intCast(byte_len)];
     }
@@ -446,6 +447,9 @@ pub const GIL = struct {
 
 /// Return true if the object is Python None.
 pub fn checkNone(obj: *c.PyObject) bool {
+    if (@hasDecl(c, "Py_IsNone")) {
+        return c.Py_IsNone(obj) != 0;
+    }
     return obj == ffi.pyNone();
 }
 
@@ -714,7 +718,7 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
 
     // None maps to null for optional types
     if (comptime isOptionalType(T)) {
-        if (ptr == ffi.pyNone()) return null;
+        if (checkNone(ptr)) return @as(T, null);
         const Child = @typeInfo(T).optional.child;
         return fromPy(Child, ptr);
     }

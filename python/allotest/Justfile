@@ -27,4 +27,4 @@ test:
 clean:
     rm -rf zig-out
     rm -rf dist
-    rm -f zigadd/*.so
+    rm -f allotest/*.so

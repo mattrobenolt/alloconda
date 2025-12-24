@@ -7,7 +7,7 @@ Keep it short and actionable; update it when workflows change.
 
 - `src/`: Zig alloconda core API and CPython interop wrappers.
 - `python/alloconda/`: Python CLI + build backend (`alloconda.build_backend`).
-- `python/zigadd/`: Demo extension module + tests + type stubs.
+- `python/allotest/`: Comprehensive test suite exercising all alloconda APIs.
 - `python/zigzon/`: ZON codec example module + tests + type stubs.
 
 ## Source file structure
@@ -29,6 +29,7 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 
 - This repo is a uv workspace. Use `uv add ...` for Python deps.
 - Prefer `just` recipes when they exist:
+  - `just allotest`: build + pytest for the canonical test suite.
   - `just zigadd` / `just zigzon`: build + pytest for examples.
   - `just lint`: `zig fmt --check` + `zlint`.
 - For wheels: `alloconda wheel`, `alloconda wheel-all`, `alloconda inspect`.
@@ -77,7 +78,8 @@ switch (T) {
 
 ## Tests and validation
 
-- Zig examples: `just zigadd`, `just zigzon`.
+- Primary test suite: `just allotest` (204 tests covering all alloconda APIs).
+- Example modules: `just zigadd`, `just zigzon`.
 - CLI typing: `cd python/alloconda && ty check`.
 - Linting: `just lint` when touching Zig core.
 

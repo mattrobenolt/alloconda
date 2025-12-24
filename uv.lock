@@ -6,8 +6,8 @@ requires-python = ">=3.14"
 members = [
     "alloconda",
     "alloconda-workspace",
+    "allotest",
     "wheeltest",
-    "zigadd",
     "zigzon",
 ]
 
@@ -62,6 +62,20 @@ requires-dist = [
     { name = "ty" },
     { name = "wheeltest", editable = "python/wheeltest" },
 ]
+
+[[package]]
+name = "allotest"
+version = "0.1.0"
+source = { editable = "python/allotest" }
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pytest", marker = "extra == 'test'" }]
+provides-extras = ["test"]
 
 [[package]]
 name = "anyio"
@@ -685,20 +699,6 @@ dev = [
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "ty", specifier = ">=0.0.6" },
 ]
-
-[[package]]
-name = "zigadd"
-version = "0.1.0"
-source = { editable = "python/zigadd" }
-
-[package.optional-dependencies]
-test = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'test'" }]
-provides-extras = ["test"]
 
 [[package]]
 name = "zigzon"
