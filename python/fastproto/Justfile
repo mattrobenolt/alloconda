@@ -1,0 +1,21 @@
+default:
+    @just --list
+
+fmt:
+    ruff check --select I --fix
+    ruff format
+
+lint:
+    ruff check
+    ty check
+
+test:
+    pytest -v tests/
+
+bench:
+    pytest -v benchmarks/bench_*.py --benchmark-only \
+      --benchmark-sort=name --benchmark-group-by=func \
+      --benchmark-columns=mean,stddev,median,ops
+
+clean:
+    rm -rf *.egg-info .benchmarks

@@ -1,0 +1,17 @@
+.{
+    .name = .fastproto,
+    .version = "0.0.0",
+    .fingerprint = 0x75330d3ac8cd408f,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .alloconda = .{
+            .url = "git+https://github.com/mattrobenolt/alloconda?ref=main#49f1c0dc9460113280448bd5becbe1d923a666e3",
+            .hash = "alloconda-0.0.0-tRxrxiM-AQAMx7A_vyFajIv2NdeFwwRzE0RSimwDkIQZ",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

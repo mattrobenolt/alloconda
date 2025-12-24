@@ -1,0 +1,41 @@
+[project]
+name = "fastproto"
+version = "0.1.0"
+description = "Fast protobuf wire format encoding/decoding"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Matt Robenolt", email = "m@robenolt.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+    "ty>=0.0.6",
+]
+test = [
+    "pytest>=9.0.2",
+    "pytest-benchmark>=5.2.3",
+]
+
+[tool.alloconda]
+package-dir = "fastproto"
+
+[build-system]
+requires = ["alloconda"]
+build-backend = "alloconda.build_backend"

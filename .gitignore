@@ -13,6 +13,7 @@ wheels/
 book/
 docs/zig-docs/
 python/hello_alloconda/
+.benchmarks/
 
 # Virtual environments
 .venv
