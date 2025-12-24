@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const alloconda_build = @import("alloconda");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -13,10 +15,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = optimize != .Debug,
+        .imports = &.{
+            .{ .name = "alloconda", .module = alloconda.module("alloconda") },
+        },
     });
-    mod.addImport("alloconda", alloconda.module("alloconda"));
 
-    const lib = @import("alloconda").addPythonLibrary(b, .{
+    const lib = alloconda_build.addPythonLibrary(b, .{
         .name = "zigzon",
         .root_module = mod,
     });

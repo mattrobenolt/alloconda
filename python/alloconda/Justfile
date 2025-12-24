@@ -10,7 +10,7 @@ lint:
     ty check
 
 test:
-    uv run pytest tests/
+    pytest tests/
 
 clean:
     rm -rf *.egg-info
