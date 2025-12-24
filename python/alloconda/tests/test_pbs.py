@@ -1,6 +1,7 @@
 """Tests for pbs module."""
 
 import pytest
+
 from alloconda.pbs import (
     PbsAsset,
     matches_version,

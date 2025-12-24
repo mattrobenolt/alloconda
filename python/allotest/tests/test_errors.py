@@ -1,7 +1,8 @@
 """Tests for all exception types and error mapping."""
 
-import allotest
 import pytest
+
+import allotest
 
 
 class TestExceptionTypes:
