@@ -75,6 +75,7 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
 
     // Error handling - each exception type
     .raise_type_error = py.method(raise_type_error, .{ .doc = "Raise TypeError" }),
+    .raise_optional_error = py.method(raise_optional_error, .{ .doc = "Raise error via optional return" }),
     .raise_value_error = py.method(raise_value_error, .{ .doc = "Raise ValueError" }),
     .raise_runtime_error = py.method(raise_runtime_error, .{ .doc = "Raise RuntimeError" }),
     .raise_zero_division = py.method(raise_zero_division, .{ .doc = "Raise ZeroDivisionError" }),
@@ -383,6 +384,13 @@ fn is_dict(obj: py.Object) bool {
 fn raise_type_error() CallError!void {
     py.raise(.TypeError, "test type error");
     return error.PythonError;
+}
+
+/// Test that optional returns properly propagate exceptions set via py.raise().
+/// This returns ?py.Object (not error union) and calls py.raise() + returns null.
+fn raise_optional_error() ?py.Object {
+    py.raise(.ValueError, "test optional error");
+    return null;
 }
 
 fn raise_value_error() CallError!void {

@@ -1,8 +1,7 @@
 """Tests for all exception types and error mapping."""
 
-import pytest
-
 import allotest
+import pytest
 
 
 class TestExceptionTypes:
@@ -11,6 +10,11 @@ class TestExceptionTypes:
     def test_type_error(self) -> None:
         with pytest.raises(TypeError, match="test type error"):
             allotest.raise_type_error()
+
+    def test_optional_error(self) -> None:
+        """Test that optional returns with py.raise() propagate exceptions."""
+        with pytest.raises(ValueError, match="test optional error"):
+            allotest.raise_optional_error()
 
     def test_value_error(self) -> None:
         with pytest.raises(ValueError, match="test value error"):
