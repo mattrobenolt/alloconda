@@ -8,7 +8,6 @@ const mem = std.mem;
 const fastproto = @import("fastproto");
 const wire = fastproto.wire;
 const py = @import("alloconda");
-const c = py.c;
 
 pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/decoding.", .{
     .encode_varint = py.method(encodeVarint, .{
@@ -94,26 +93,12 @@ fn decodeVarint(data: py.Bytes, offset: usize) ?py.Tuple {
 }
 
 fn tuple2(first: anytype, second: anytype) ?py.Tuple {
-    // TODO: add alloconda Tuple init/set helpers so bindings can avoid PyTuple_New directly.
-    const tuple_obj = c.PyTuple_New(2) orelse return null;
-    var result = py.Tuple.owned(tuple_obj);
-    const value_obj = py.toObject(first) orelse {
-        result.deinit();
-        return null;
-    };
-    const offset_obj = py.toObject(second) orelse {
-        value_obj.deinit();
-        result.deinit();
-        return null;
-    };
-    if (c.PyTuple_SetItem(result.obj.ptr, 0, value_obj.ptr) != 0) {
-        value_obj.deinit();
-        offset_obj.deinit();
+    var result = py.Tuple.init(2) orelse return null;
+    if (!result.set(0, first)) {
         result.deinit();
         return null;
     }
-    if (c.PyTuple_SetItem(result.obj.ptr, 1, offset_obj.ptr) != 0) {
-        offset_obj.deinit();
+    if (!result.set(1, second)) {
         result.deinit();
         return null;
     }

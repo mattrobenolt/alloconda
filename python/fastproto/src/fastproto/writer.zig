@@ -18,7 +18,6 @@ const mem = std.mem;
 const testing = std.testing;
 
 const wire = @import("wire.zig");
-const WireType = wire.WireType;
 const Tag = wire.Tag;
 const Scalar = wire.Scalar;
 const max_varint_len = wire.max_varint_len;

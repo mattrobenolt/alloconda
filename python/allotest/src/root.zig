@@ -51,6 +51,7 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .tuple_len = py.method(tuple_len, .{ .doc = "Return length of tuple" }),
     .tuple_get = py.method(tuple_get, .{ .doc = "Get item from tuple by index" }),
     .tuple_create = py.method(tuple_create, .{ .doc = "Create a tuple from values" }),
+    .tuple_create_manual = py.method(tuple_create_manual, .{ .doc = "Create a tuple via Tuple.init/set" }),
 
     // Object operations
     .obj_call0 = py.method(obj_call0, .{ .doc = "Call object with no args" }),
@@ -296,6 +297,19 @@ fn tuple_get(tuple: py.Tuple, index: i64) CallError!py.Object {
 fn tuple_create(a: i64, b: i64) CallError!py.Object {
     const values: [2]i64 = .{ a, b };
     const tuple = py.toTuple(i64, &values) orelse return error.PythonError;
+    return tuple.obj;
+}
+
+fn tuple_create_manual(a: i64, b: i64) CallError!py.Object {
+    var tuple = py.Tuple.init(2) orelse return error.PythonError;
+    if (!tuple.set(0, a)) {
+        tuple.deinit();
+        return error.PythonError;
+    }
+    if (!tuple.set(1, b)) {
+        tuple.deinit();
+        return error.PythonError;
+    }
     return tuple.obj;
 }
 

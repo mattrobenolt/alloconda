@@ -7,7 +7,6 @@ const std = @import("std");
 const Io = std.Io;
 const meta = std.meta;
 const testing = std.testing;
-const assert = std.debug.assert;
 
 /// Protobuf wire types.
 pub const WireType = enum(u3) {
@@ -72,7 +71,20 @@ pub fn encodeVarint(comptime T: type, value: T, buf: []u8) !usize {
 
 test encodeVarint {
     // Roundtrip u64
-    for ([_]u64{ 0, 1, 127, 128, 255, 256, 16383, 16384, 0x7FFFFFFF, 0xFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF }) |value| {
+    for ([_]u64{
+        0,
+        1,
+        127,
+        128,
+        255,
+        256,
+        16383,
+        16384,
+        0x7FFFFFFF,
+        0xFFFFFFFF,
+        0x7FFFFFFFFFFFFFFF,
+        0xFFFFFFFFFFFFFFFF,
+    }) |value| {
         var buf: [max_varint_len]u8 = undefined;
         const len = try encodeVarint(u64, value, &buf);
         const decoded, const bytes_read = try decodeVarint(u64, buf[0..len]);
@@ -81,7 +93,17 @@ test encodeVarint {
     }
 
     // Roundtrip i64
-    for ([_]i64{ 0, 1, -1, 127, -128, 255, -256, 0x7FFFFFFFFFFFFFFF, -0x8000000000000000 }) |value| {
+    for ([_]i64{
+        0,
+        1,
+        -1,
+        127,
+        -128,
+        255,
+        -256,
+        0x7FFFFFFFFFFFFFFF,
+        -0x8000000000000000,
+    }) |value| {
         var buf: [max_varint_len]u8 = undefined;
         const len = try encodeVarint(i64, value, &buf);
         const decoded, const bytes_read = try decodeVarint(i64, buf[0..len]);

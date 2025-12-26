@@ -11,7 +11,6 @@ const unicode = std.unicode;
 const Allocator = mem.Allocator;
 
 const wire = @import("wire.zig");
-const WireType = wire.WireType;
 const Error = wire.Error;
 const Tag = wire.Tag;
 const Scalar = wire.Scalar;
@@ -245,14 +244,24 @@ pub const Field = union(enum) {
         }
 
         /// Read packed repeated field into buffer, returns iterator.
-        pub fn repeated(self: @This(), comptime T: type, comptime encoding: Encoding, buf: []u8) !PackedIterator(T, encoding) {
+        pub fn repeated(
+            self: @This(),
+            comptime T: type,
+            comptime encoding: Encoding,
+            buf: []u8,
+        ) !PackedIterator(T, encoding) {
             const data = try self.bytes(buf);
             return .{ .data = data, .pos = 0 };
         }
 
         /// Read packed repeated field with allocation, returns iterator.
         /// Call deinit() on the result to free the allocated buffer.
-        pub fn repeatedAlloc(self: @This(), comptime T: type, comptime encoding: Encoding, gpa: Allocator) !PackedRepeated(T, encoding) {
+        pub fn repeatedAlloc(
+            self: @This(),
+            comptime T: type,
+            comptime encoding: Encoding,
+            gpa: Allocator,
+        ) !PackedRepeated(T, encoding) {
             const data = try self.bytesAlloc(gpa);
             return .{
                 .iter = .{ .data = data, .pos = 0 },

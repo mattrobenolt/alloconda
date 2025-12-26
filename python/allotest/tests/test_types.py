@@ -182,3 +182,8 @@ class TestTuple:
     def test_tuple_create_values(self) -> None:
         assert allotest.tuple_create(0, 0) == (0, 0)
         assert allotest.tuple_create(-1, 100) == (-1, 100)
+
+    def test_tuple_create_manual(self) -> None:
+        result = allotest.tuple_create_manual(5, -1)
+        assert result == (5, -1)
+        assert isinstance(result, tuple)

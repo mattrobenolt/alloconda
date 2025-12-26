@@ -112,14 +112,14 @@ pub const Object = struct {
         if (@hasDecl(c, "PyObject_CallNoArgs")) {
             const result = c.PyObject_CallNoArgs(self.ptr);
             if (result == null) return null;
-            return Object.owned(result);
+            return .owned(result);
         }
 
         const tuple = c.PyTuple_New(0) orelse return null;
         const result = c.PyObject_CallObject(self.ptr, tuple);
         c.Py_DecRef(tuple);
         if (result == null) return null;
-        return Object.owned(result);
+        return .owned(result);
     }
 
     /// Call with one argument.
@@ -139,7 +139,7 @@ pub const Object = struct {
         const result = c.PyObject_CallObject(self.ptr, tuple);
         c.Py_DecRef(tuple);
         if (result == null) return null;
-        return Object.owned(result);
+        return .owned(result);
     }
 
     /// Call with two arguments.
@@ -171,14 +171,14 @@ pub const Object = struct {
         const result = c.PyObject_CallObject(self.ptr, tuple);
         c.Py_DecRef(tuple);
         if (result == null) return null;
-        return Object.owned(result);
+        return .owned(result);
     }
 
     /// Get an attribute by name.
     pub fn getAttr(self: Object, name: [:0]const u8) ?Object {
         const result = c.PyObject_GetAttrString(self.ptr, @ptrCast(name.ptr));
         if (result == null) return null;
-        return Object.owned(result);
+        return .owned(result);
     }
 
     /// Set an attribute by name.
@@ -221,7 +221,7 @@ pub const Bytes = struct {
     /// Create bytes from a slice.
     pub fn fromSlice(data: []const u8) ?Bytes {
         const obj = c.PyBytes_FromStringAndSize(data.ptr, @intCast(data.len)) orelse return null;
-        return Bytes.owned(obj);
+        return .owned(obj);
     }
 
     /// Borrow a bytes object without changing refcount.
@@ -262,18 +262,18 @@ pub const List = struct {
 
     /// Borrow a list without changing refcount.
     pub fn borrowed(ptr: *c.PyObject) List {
-        return .{ .obj = Object.borrowed(ptr) };
+        return .{ .obj = .borrowed(ptr) };
     }
 
     /// Own a list reference.
     pub fn owned(ptr: *c.PyObject) List {
-        return .{ .obj = Object.owned(ptr) };
+        return .{ .obj = .owned(ptr) };
     }
 
     /// Create a new list with the given size.
     pub fn init(size: usize) ?List {
         const list_obj = c.PyList_New(@intCast(size)) orelse return null;
-        return List.owned(list_obj);
+        return .owned(list_obj);
     }
 
     /// Release the reference if owned.
@@ -291,7 +291,7 @@ pub const List = struct {
     /// Borrow the item at the given index.
     pub fn get(self: List, index: usize) ?Object {
         const item = c.PyList_GetItem(self.obj.ptr, @intCast(index)) orelse return null;
-        return Object.borrowed(item);
+        return .borrowed(item);
     }
 
     /// Set the item at the given index.
@@ -318,18 +318,18 @@ pub const Dict = struct {
 
     /// Borrow a dict without changing refcount.
     pub fn borrowed(ptr: *c.PyObject) Dict {
-        return .{ .obj = Object.borrowed(ptr) };
+        return .{ .obj = .borrowed(ptr) };
     }
 
     /// Own a dict reference.
     pub fn owned(ptr: *c.PyObject) Dict {
-        return .{ .obj = Object.owned(ptr) };
+        return .{ .obj = .owned(ptr) };
     }
 
     /// Create a new dict.
     pub fn init() ?Dict {
         const dict_obj = c.PyDict_New() orelse return null;
-        return Dict.owned(dict_obj);
+        return .owned(dict_obj);
     }
 
     /// Release the reference if owned.
@@ -387,8 +387,8 @@ pub const DictIter = struct {
         var value: ?*c.PyObject = null;
         if (c.PyDict_Next(self.dict, &self.pos, &key, &value) == 0) return null;
         return .{
-            .key = Object.borrowed(key orelse return null),
-            .value = Object.borrowed(value orelse return null),
+            .key = .borrowed(key orelse return null),
+            .value = .borrowed(value orelse return null),
         };
     }
 };
@@ -399,12 +399,18 @@ pub const Tuple = struct {
 
     /// Borrow a tuple without changing refcount.
     pub fn borrowed(ptr: *c.PyObject) Tuple {
-        return .{ .obj = Object.borrowed(ptr) };
+        return .{ .obj = .borrowed(ptr) };
     }
 
     /// Own a tuple reference.
     pub fn owned(ptr: *c.PyObject) Tuple {
-        return .{ .obj = Object.owned(ptr) };
+        return .{ .obj = .owned(ptr) };
+    }
+
+    /// Create a new tuple with the given size.
+    pub fn init(size: usize) ?Tuple {
+        const tuple_obj = c.PyTuple_New(@intCast(size)) orelse return null;
+        return .owned(tuple_obj);
     }
 
     /// Release the reference if owned.
@@ -422,7 +428,17 @@ pub const Tuple = struct {
     /// Borrow the item at the given index.
     pub fn get(self: Tuple, index: usize) ?Object {
         const item = c.PyTuple_GetItem(self.obj.ptr, @intCast(index)) orelse return null;
-        return Object.borrowed(item);
+        return .borrowed(item);
+    }
+
+    /// Set the item at the given index.
+    pub fn set(self: Tuple, index: usize, value: anytype) bool {
+        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+        if (c.PyTuple_SetItem(self.obj.ptr, @intCast(index), value_obj) != 0) {
+            c.Py_DecRef(value_obj);
+            return false;
+        }
+        return true;
     }
 };
 
@@ -523,13 +539,13 @@ pub fn sliceBytes(obj: *c.PyObject) ?[]const u8 {
 
 /// Borrow Python None as an Object.
 pub fn none() Object {
-    return Object.borrowed(ffi.pyNone());
+    return .borrowed(ffi.pyNone());
 }
 
 /// Return the string representation of an object.
 pub fn objectStr(obj: *c.PyObject) ?Object {
     const value = c.PyObject_Str(obj) orelse return null;
-    return Object.owned(value);
+    return .owned(value);
 }
 
 /// Convert an object to truthiness.
@@ -549,7 +565,7 @@ pub fn floatAsDouble(obj: *c.PyObject) ?f64 {
 /// Create a long from a base-10 string.
 pub fn longFromString(text: [:0]const u8) ?Object {
     const value = c.PyLong_FromString(@ptrCast(text.ptr), null, 10) orelse return null;
-    return Object.owned(value);
+    return .owned(value);
 }
 
 /// Create a dict iterator for low-level loops.
@@ -570,14 +586,14 @@ pub fn dictNext(
 /// Convert a Zig value to a Python object and wrap it.
 pub fn toObject(value: anytype) ?Object {
     const obj = toPy(@TypeOf(value), value) orelse return null;
-    return Object.owned(obj);
+    return .owned(obj);
 }
 
 /// Import a module by name.
 pub fn importModule(name: [:0]const u8) ?Object {
     const obj = c.PyImport_ImportModule(@ptrCast(name.ptr));
     if (obj == null) return null;
-    return Object.owned(obj);
+    return .owned(obj);
 }
 
 // ============================================================================
@@ -659,7 +675,7 @@ pub fn dictToEntries(
 
 /// Convert a Zig slice into a Python list.
 pub fn toList(comptime T: type, values: []const T) ?List {
-    var list = List.init(values.len) orelse return null;
+    var list: List = .init(values.len) orelse return null;
     for (values, 0..) |v, i| {
         if (!list.set(i, v)) {
             list.deinit();
@@ -692,7 +708,7 @@ pub fn toDict(
     comptime V: type,
     entries: []const struct { key: K, value: V },
 ) ?Dict {
-    var dict = Dict.init() orelse return null;
+    var dict: Dict = .init() orelse return null;
     for (entries) |entry| {
         if (!dict.setItem(entry.key, entry.value)) {
             dict.deinit();
