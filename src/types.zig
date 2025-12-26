@@ -62,6 +62,7 @@ pub const Object = struct {
         return .owned(obj);
     }
 
+    /// Return an owned reference (increments if this is borrowed).
     pub fn toPyObject(self: Object) PyError!*c.PyObject {
         if (!self.owns_ref) PyObject.incRef(self.ptr);
         return self.ptr;
@@ -221,11 +222,12 @@ pub const Object = struct {
 pub const Bytes = struct {
     obj: Object,
 
-    /// Create bytes from a slice.
+    /// Create a new bytes object by copying slice data.
     pub fn fromSlice(data: []const u8) PyError!Bytes {
         return .owned(try PyBytes.fromSlice(data));
     }
 
+    /// Borrow a bytes object without changing refcount.
     pub fn fromObject(obj: Object) PyError!Bytes {
         if (!obj.isBytes()) return raise(.TypeError, "expected bytes");
         return .{ .obj = .borrowed(obj.ptr) };
@@ -235,6 +237,7 @@ pub const Bytes = struct {
         return self.obj.toPyObject();
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(self: Bytes) PyError!Object {
         const obj = try self.toPyObject();
         return .owned(obj);
@@ -260,7 +263,7 @@ pub const Bytes = struct {
         return PyBytes.size(self.obj.ptr);
     }
 
-    /// Borrow the underlying bytes as a slice.
+    /// Borrow the underlying bytes as a slice (valid while the bytes object lives).
     pub fn slice(self: Bytes) PyError![]const u8 {
         return PyBytes.slice(self.obj.ptr);
     }
@@ -270,12 +273,13 @@ pub const Bytes = struct {
 pub const Buffer = struct {
     view: c.Py_buffer,
 
-    /// Request a buffer view (read-only).
+    /// Request a buffer view (read-only); release when done.
     pub fn init(obj: Object) PyError!Buffer {
         const view = try PyBuffer.get(obj.ptr, c.PyBUF_SIMPLE);
         return .{ .view = view };
     }
 
+    /// Request a buffer view from a buffer-capable object; release when done.
     pub fn fromObject(obj: Object) PyError!Buffer {
         if (!checkBuffer(obj.ptr)) return raise(.TypeError, "expected buffer");
         return init(obj);
@@ -291,7 +295,7 @@ pub const Buffer = struct {
         return @intCast(self.view.len);
     }
 
-    /// Borrow the underlying bytes as a slice.
+    /// Borrow the underlying bytes as a slice (valid until released).
     pub fn slice(self: *const Buffer) []const u8 {
         const ptr: [*]const u8 = @ptrCast(self.view.buf);
         return ptr[0..self.len()];
@@ -339,6 +343,7 @@ pub const BigInt = struct {
         return PyLong.fromString(text_z);
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(self: BigInt) PyError!Object {
         const obj = try self.toPyObject();
         return .owned(obj);
@@ -382,6 +387,7 @@ pub const Int = union(enum) {
         };
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(value: Int) PyError!Object {
         const obj = try value.toPyObject();
         return .owned(obj);
@@ -418,6 +424,7 @@ pub const Long = union(enum) {
         };
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(value: Long) PyError!Object {
         const obj = try value.toPyObject();
         return .owned(obj);
@@ -437,6 +444,7 @@ pub const List = struct {
         return .{ .obj = .borrowed(ptr) };
     }
 
+    /// Borrow a list without changing refcount.
     pub fn fromObject(obj: Object) PyError!List {
         if (!obj.isList()) return raise(.TypeError, "expected list");
         return .{ .obj = .borrowed(obj.ptr) };
@@ -446,6 +454,7 @@ pub const List = struct {
         return self.obj.toPyObject();
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(self: List) PyError!Object {
         const obj = try self.toPyObject();
         return .owned(obj);
@@ -462,7 +471,7 @@ pub const List = struct {
         return .owned(list_obj);
     }
 
-    /// Create a new list from a Zig slice.
+    /// Create a new list by converting each element; the list owns the references.
     pub fn fromSlice(comptime T: type, values: []const T) PyError!List {
         var list: List = try .init(values.len);
         errdefer list.deinit();
@@ -486,7 +495,7 @@ pub const List = struct {
         return .borrowed(item);
     }
 
-    /// Set the item at the given index.
+    /// Set the item at the given index; transfers ownership of the new reference.
     pub fn set(self: List, comptime T: type, index: usize, value: T) PyError!void {
         const value_obj = try toPy(T, value);
         errdefer PyObject.decRef(value_obj);
@@ -500,7 +509,7 @@ pub const List = struct {
         try PyList.append(self.obj.ptr, value_obj);
     }
 
-    /// Convert this list into an owned Zig slice.
+    /// Convert this list into an owned Zig slice; caller must free the buffer.
     pub fn toSlice(self: List, comptime T: type, gpa: Allocator) PyError![]T {
         const size = try self.len();
         const buffer = gpa.alloc(T, size) catch {
@@ -525,6 +534,7 @@ pub const Dict = struct {
         return .{ .obj = .borrowed(ptr) };
     }
 
+    /// Borrow a dict without changing refcount.
     pub fn fromObject(obj: Object) PyError!Dict {
         if (!obj.isDict()) return raise(.TypeError, "expected dict");
         return .{ .obj = .borrowed(obj.ptr) };
@@ -534,6 +544,7 @@ pub const Dict = struct {
         return self.obj.toPyObject();
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(self: Dict) PyError!Object {
         const obj = try self.toPyObject();
         return .owned(obj);
@@ -601,7 +612,7 @@ pub const Dict = struct {
         return struct { key: K, value: V };
     }
 
-    /// Convert this dict into an owned slice of key/value pairs.
+    /// Convert this dict into an owned slice of key/value pairs; caller must free the buffer.
     pub fn toEntries(
         self: Dict,
         comptime K: type,
@@ -638,6 +649,7 @@ pub const DictIter = struct {
         value: Object,
     };
 
+    /// Borrow a dict without changing refcount.
     pub fn fromObject(obj: Object) PyError!@This() {
         if (!obj.isDict()) return raise(.TypeError, "expected dict");
         return .{ .dict = obj.ptr };
@@ -666,6 +678,7 @@ pub const Tuple = struct {
         return .{ .obj = .borrowed(ptr) };
     }
 
+    /// Borrow a tuple without changing refcount.
     pub fn fromObject(obj: Object) PyError!Tuple {
         if (!obj.isTuple()) return raise(.TypeError, "expected tuple");
         return .{ .obj = .borrowed(obj.ptr) };
@@ -675,6 +688,7 @@ pub const Tuple = struct {
         return self.obj.toPyObject();
     }
 
+    /// Return an owned Object (increments if needed).
     pub fn toObject(self: Tuple) PyError!Object {
         const obj = try self.toPyObject();
         return .owned(obj);
@@ -691,7 +705,7 @@ pub const Tuple = struct {
         return .owned(tuple_obj);
     }
 
-    /// Create a new tuple from a Zig slice.
+    /// Create a new tuple by converting each element; the tuple owns the references.
     pub fn fromSlice(comptime T: type, values: []const T) PyError!Tuple {
         const tuple_obj = try PyTuple.new(values.len);
         errdefer PyObject.decRef(tuple_obj);
@@ -720,14 +734,14 @@ pub const Tuple = struct {
         return .borrowed(item);
     }
 
-    /// Set the item at the given index.
+    /// Set the item at the given index; transfers ownership of the new reference.
     pub fn set(self: Tuple, comptime T: type, index: usize, value: T) PyError!void {
         const value_obj = try toPy(T, value);
         errdefer PyObject.decRef(value_obj);
         try PyTuple.setItem(self.obj.ptr, index, value_obj);
     }
 
-    /// Convert this tuple into an owned Zig slice.
+    /// Convert this tuple into an owned Zig slice; caller must free the buffer.
     pub fn toSlice(self: Tuple, comptime T: type, gpa: Allocator) PyError![]T {
         const size = try self.len();
         const buffer = gpa.alloc(T, size) catch return raise(.MemoryError, "out of memory");

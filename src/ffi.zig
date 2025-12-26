@@ -61,6 +61,7 @@ pub const PyObject = struct {
         c.Py_DecRef(obj);
     }
 
+    /// New reference.
     pub inline fn callNoArgs(obj: *c.PyObject) !*c.PyObject {
         if (@hasDecl(c, "PyObject_CallNoArgs")) {
             return objectOrError(c.PyObject_CallNoArgs(obj));
@@ -70,10 +71,12 @@ pub const PyObject = struct {
         return callObject(obj, tuple);
     }
 
+    /// New reference.
     pub inline fn callObject(obj: *c.PyObject, args: *c.PyObject) !*c.PyObject {
         return objectOrError(c.PyObject_CallObject(obj, args));
     }
 
+    /// New reference.
     pub inline fn getAttrString(obj: *c.PyObject, name: [:0]const u8) !*c.PyObject {
         return objectOrError(c.PyObject_GetAttrString(obj, @ptrCast(name.ptr)));
     }
@@ -88,6 +91,7 @@ pub const PyObject = struct {
         return value != 0;
     }
 
+    /// New reference.
     pub inline fn str(obj: *c.PyObject) !*c.PyObject {
         return objectOrError(c.PyObject_Str(obj));
     }
@@ -95,6 +99,7 @@ pub const PyObject = struct {
 
 /// C API analog: PyMem_* helpers.
 pub const PyMem = struct {
+    /// Allocates memory; caller must free with PyMem.free.
     pub inline fn alloc(size: usize) !*anyopaque {
         return c.PyMem_Malloc(size) orelse {
             _ = c.PyErr_NoMemory();
@@ -109,10 +114,12 @@ pub const PyMem = struct {
 
 /// C API analog: PyModule_* helpers.
 pub const PyModule = struct {
+    /// New reference.
     pub inline fn create(def: *c.PyModuleDef) !*c.PyObject {
         return objectOrError(c.PyModule_Create(def));
     }
 
+    /// Steals a reference to `value` on success.
     pub inline fn addObject(obj: *c.PyObject, name: [:0]const u8, value: *c.PyObject) !void {
         return voidOrError(c.PyModule_AddObject(obj, @ptrCast(name.ptr), value));
     }
@@ -120,10 +127,12 @@ pub const PyModule = struct {
 
 /// C API analog: PyType_* helpers.
 pub const PyType = struct {
+    /// New reference.
     pub inline fn fromSpec(spec: *c.PyType_Spec) !*c.PyObject {
         return objectOrError(c.PyType_FromSpec(spec));
     }
 
+    /// New reference.
     pub inline fn genericNew(
         type_obj: ?*c.PyTypeObject,
         args: ?*c.PyObject,
@@ -132,6 +141,7 @@ pub const PyType = struct {
         return objectOrError(c.PyType_GenericNew(type_obj, args, kwargs));
     }
 
+    /// Borrowed type pointer.
     pub inline fn typePtr(obj: *c.PyObject) *c.PyTypeObject {
         return @ptrCast(c.Py_TYPE(obj));
     }
@@ -192,6 +202,7 @@ pub const PyErr = struct {
 
 /// C API analog: PyImport_* helpers.
 pub const PyImport = struct {
+    /// New reference.
     pub inline fn importModule(name: [:0]const u8) !*c.PyObject {
         return objectOrError(c.PyImport_ImportModule(@ptrCast(name.ptr)));
     }
@@ -199,6 +210,7 @@ pub const PyImport = struct {
 
 /// C API analog: PyList_* helpers.
 pub const PyList = struct {
+    /// New reference.
     pub inline fn new(count: usize) !*c.PyObject {
         return objectOrError(c.PyList_New(@intCast(count)));
     }
@@ -207,14 +219,17 @@ pub const PyList = struct {
         return ssizeOrError(c.PyList_Size(obj));
     }
 
+    /// Borrowed reference.
     pub inline fn getItem(obj: *c.PyObject, index: usize) !*c.PyObject {
         return objectOrError(c.PyList_GetItem(obj, @intCast(index)));
     }
 
+    /// Steals a reference to `item` on success.
     pub inline fn setItem(obj: *c.PyObject, index: usize, item: *c.PyObject) !void {
         return voidOrError(c.PyList_SetItem(obj, @intCast(index), item));
     }
 
+    /// Adds a new reference to `item` (does not steal).
     pub inline fn append(obj: *c.PyObject, item: *c.PyObject) !void {
         return voidOrError(c.PyList_Append(obj, item));
     }
@@ -222,6 +237,7 @@ pub const PyList = struct {
 
 /// C API analog: PyTuple_* helpers.
 pub const PyTuple = struct {
+    /// New reference.
     pub inline fn new(count: usize) !*c.PyObject {
         return objectOrError(c.PyTuple_New(@intCast(count)));
     }
@@ -230,10 +246,12 @@ pub const PyTuple = struct {
         return ssizeOrError(c.PyTuple_Size(obj));
     }
 
+    /// Borrowed reference.
     pub inline fn getItem(obj: *c.PyObject, index: usize) !*c.PyObject {
         return objectOrError(c.PyTuple_GetItem(obj, @intCast(index)));
     }
 
+    /// Steals a reference to `item` on success.
     pub inline fn setItem(obj: *c.PyObject, index: usize, item: *c.PyObject) !void {
         return voidOrError(c.PyTuple_SetItem(obj, @intCast(index), item));
     }
@@ -241,6 +259,7 @@ pub const PyTuple = struct {
 
 /// C API analog: PyDict_* helpers.
 pub const PyDict = struct {
+    /// New reference.
     pub inline fn new() !*c.PyObject {
         return objectOrError(c.PyDict_New());
     }
@@ -249,6 +268,7 @@ pub const PyDict = struct {
         return ssizeOrError(c.PyDict_Size(obj));
     }
 
+    /// Borrowed reference or null.
     pub inline fn getItemWithError(obj: *c.PyObject, key: *c.PyObject) !?*c.PyObject {
         const item = c.PyDict_GetItemWithError(obj, key);
         if (item == null) {
@@ -258,10 +278,12 @@ pub const PyDict = struct {
         return item;
     }
 
+    /// Does not steal references.
     pub inline fn setItem(obj: *c.PyObject, key: *c.PyObject, value: *c.PyObject) !void {
         return voidOrError(c.PyDict_SetItem(obj, key, value));
     }
 
+    /// Borrowed key/value pairs.
     pub inline fn next(
         obj: *c.PyObject,
         pos: *c.Py_ssize_t,
@@ -275,6 +297,7 @@ pub const PyDict = struct {
 
 /// C API analog: PyBytes_* helpers.
 pub const PyBytes = struct {
+    /// Create a new bytes object by copying slice data.
     pub inline fn fromSlice(data: []const u8) !*c.PyObject {
         return objectOrError(c.PyBytes_FromStringAndSize(data.ptr, @intCast(data.len)));
     }
@@ -283,6 +306,7 @@ pub const PyBytes = struct {
         return ssizeOrError(c.PyBytes_Size(obj));
     }
 
+    /// Borrowed view into the bytes object's storage.
     pub inline fn slice(obj: *c.PyObject) ![]const u8 {
         var byte_len: c.Py_ssize_t = 0;
         var raw: [*c]u8 = null;
@@ -294,10 +318,12 @@ pub const PyBytes = struct {
 
 /// C API analog: PyUnicode_* helpers.
 pub const PyUnicode = struct {
+    /// Create a new unicode object by copying slice data.
     pub inline fn fromSlice(data: []const u8) !*c.PyObject {
         return objectOrError(c.PyUnicode_FromStringAndSize(data.ptr, @intCast(data.len)));
     }
 
+    /// Borrowed view into the unicode object's UTF-8 cache.
     pub inline fn slice(obj: *c.PyObject) ![]const u8 {
         var len: c.Py_ssize_t = 0;
         const raw = c.PyUnicode_AsUTF8AndSize(obj, &len);
@@ -309,12 +335,14 @@ pub const PyUnicode = struct {
 
 /// C API analog: PyObject_GetBuffer / PyBuffer_Release helpers.
 pub const PyBuffer = struct {
+    /// Returns a view that must be released with PyBuffer.release.
     pub inline fn get(obj: *c.PyObject, flags: c_int) !c.Py_buffer {
         var view: c.Py_buffer = undefined;
         try voidOrError(c.PyObject_GetBuffer(obj, &view, flags));
         return view;
     }
 
+    /// Release a view returned by PyBuffer.get.
     pub inline fn release(view: *c.Py_buffer) void {
         c.PyBuffer_Release(view);
     }
@@ -347,14 +375,17 @@ pub const PyLong = struct {
         return @intCast(value);
     }
 
+    /// New reference.
     pub inline fn fromLongLong(value: i64) !*c.PyObject {
         return objectOrError(c.PyLong_FromLongLong(@intCast(value)));
     }
 
+    /// New reference.
     pub inline fn fromUnsignedLongLong(value: u64) !*c.PyObject {
         return objectOrError(c.PyLong_FromUnsignedLongLong(@intCast(value)));
     }
 
+    /// New reference.
     pub inline fn fromString(text: [:0]const u8) !*c.PyObject {
         return objectOrError(c.PyLong_FromString(@ptrCast(text.ptr), null, 10));
     }
@@ -368,6 +399,7 @@ pub const PyFloat = struct {
         return value;
     }
 
+    /// New reference.
     pub inline fn fromDouble(value: f64) !*c.PyObject {
         return objectOrError(c.PyFloat_FromDouble(value));
     }
@@ -375,6 +407,7 @@ pub const PyFloat = struct {
 
 /// C API analog: PyBool_* helpers.
 pub const PyBool = struct {
+    /// New reference.
     pub inline fn fromBool(value: bool) !*c.PyObject {
         return objectOrError(c.PyBool_FromLong(@intFromBool(value)));
     }
