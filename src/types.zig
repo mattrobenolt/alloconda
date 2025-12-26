@@ -44,6 +44,19 @@ pub const Object = struct {
         return fromPy(T, self.ptr);
     }
 
+    /// Convert a Zig value into a new Python object.
+    pub fn from(comptime T: type, value: T) ?Object {
+        const obj = toPy(T, value) orelse return null;
+        return .owned(obj);
+    }
+
+    pub fn toPyObject(self: Object) ?*c.PyObject {
+        if (!self.owns_ref) {
+            c.Py_IncRef(self.ptr);
+        }
+        return self.ptr;
+    }
+
     /// Check if the object is callable.
     pub fn isCallable(self: Object) bool {
         return c.PyCallable_Check(self.ptr) != 0;
@@ -96,17 +109,32 @@ pub const Object = struct {
 
     /// Borrow the UTF-8 slice for a Unicode object.
     pub fn unicodeSlice(self: Object) ?[]const u8 {
-        return sliceUnicode(self.ptr);
+        var len: c.Py_ssize_t = 0;
+        const raw = c.PyUnicode_AsUTF8AndSize(self.ptr, &len) orelse return null;
+        const ptr: [*]const u8 = @ptrCast(raw);
+        return ptr[0..@intCast(len)];
     }
 
     /// Borrow the byte slice for a bytes object.
     pub fn bytesSlice(self: Object) ?[]const u8 {
-        return sliceBytes(self.ptr);
+        var len: c.Py_ssize_t = 0;
+        var raw: [*c]u8 = null;
+        if (c.PyBytes_AsStringAndSize(self.ptr, &raw, &len) != 0) return null;
+        const ptr: [*]const u8 = @ptrCast(raw);
+        return ptr[0..@intCast(len)];
     }
 
     /// Convert the object to truthiness.
     pub fn isTrue(self: Object) ?bool {
-        return objectIsTrue(self.ptr);
+        const value = c.PyObject_IsTrue(self.ptr);
+        if (value < 0) return null;
+        return value != 0;
+    }
+
+    /// Return the string representation of an object.
+    pub fn str(self: Object) ?Object {
+        const value = c.PyObject_Str(self.ptr) orelse return null;
+        return .owned(value);
     }
 
     /// Call with no arguments.
@@ -125,8 +153,8 @@ pub const Object = struct {
     }
 
     /// Call with one argument.
-    pub fn call1(self: Object, arg: anytype) ?Object {
-        const arg_obj = toPy(@TypeOf(arg), arg) orelse return null;
+    pub fn call1(self: Object, comptime T: type, arg: T) ?Object {
+        const arg_obj = toPy(T, arg) orelse return null;
         const tuple = c.PyTuple_New(1) orelse {
             c.Py_DecRef(arg_obj);
             return null;
@@ -145,9 +173,9 @@ pub const Object = struct {
     }
 
     /// Call with two arguments.
-    pub fn call2(self: Object, arg0: anytype, arg1: anytype) ?Object {
-        const arg0_obj = toPy(@TypeOf(arg0), arg0) orelse return null;
-        const arg1_obj = toPy(@TypeOf(arg1), arg1) orelse {
+    pub fn call2(self: Object, comptime T0: type, arg0: T0, comptime T1: type, arg1: T1) ?Object {
+        const arg0_obj = toPy(T0, arg0) orelse return null;
+        const arg1_obj = toPy(T1, arg1) orelse {
             c.Py_DecRef(arg0_obj);
             return null;
         };
@@ -184,8 +212,8 @@ pub const Object = struct {
     }
 
     /// Set an attribute by name.
-    pub fn setAttr(self: Object, name: [:0]const u8, value: anytype) bool {
-        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+    pub fn setAttr(self: Object, name: [:0]const u8, comptime T: type, value: T) bool {
+        const value_obj = toPy(T, value) orelse return false;
         if (c.PyObject_SetAttrString(self.ptr, @ptrCast(name.ptr), value_obj) != 0) {
             c.Py_DecRef(value_obj);
             return false;
@@ -202,17 +230,24 @@ pub const Object = struct {
     }
 
     /// Call a method with one argument.
-    pub fn callMethod1(self: Object, name: [:0]const u8, arg: anytype) ?Object {
+    pub fn callMethod1(self: Object, name: [:0]const u8, comptime T: type, arg: T) ?Object {
         const meth = self.getAttr(name) orelse return null;
         defer meth.deinit();
-        return meth.call1(arg);
+        return meth.call1(T, arg);
     }
 
     /// Call a method with two arguments.
-    pub fn callMethod2(self: Object, name: [:0]const u8, arg0: anytype, arg1: anytype) ?Object {
+    pub fn callMethod2(
+        self: Object,
+        name: [:0]const u8,
+        comptime T0: type,
+        arg0: T0,
+        comptime T1: type,
+        arg1: T1,
+    ) ?Object {
         const meth = self.getAttr(name) orelse return null;
         defer meth.deinit();
-        return meth.call2(arg0, arg1);
+        return meth.call2(T0, arg0, T1, arg1);
     }
 };
 
@@ -223,6 +258,23 @@ pub const Bytes = struct {
     /// Create bytes from a slice.
     pub fn fromSlice(data: []const u8) ?Bytes {
         const obj = c.PyBytes_FromStringAndSize(data.ptr, @intCast(data.len)) orelse return null;
+        return .owned(obj);
+    }
+
+    pub fn fromObject(obj: Object) ?Bytes {
+        if (!obj.isBytes()) {
+            raise(.TypeError, "expected bytes");
+            return null;
+        }
+        return .{ .obj = .borrowed(obj.ptr) };
+    }
+
+    pub fn toPyObject(self: Bytes) ?*c.PyObject {
+        return self.obj.toPyObject();
+    }
+
+    pub fn toObject(self: Bytes) ?Object {
+        const obj = self.toPyObject() orelse return null;
         return .owned(obj);
     }
 
@@ -271,6 +323,14 @@ pub const Buffer = struct {
         return .{ .view = view };
     }
 
+    pub fn fromObject(obj: Object) ?Buffer {
+        if (!checkBuffer(obj.ptr)) {
+            raise(.TypeError, "expected buffer");
+            return null;
+        }
+        return init(obj);
+    }
+
     /// Release the buffer view.
     pub fn release(self: *Buffer) void {
         c.PyBuffer_Release(&self.view);
@@ -295,6 +355,57 @@ pub const BigInt = struct {
     pub fn deinit(self: *BigInt) void {
         self.value.deinit();
     }
+
+    pub fn fromObject(obj: Object) ?BigInt {
+        if (!obj.isLong()) {
+            raise(.TypeError, "expected int");
+            return null;
+        }
+        const text_obj = c.PyObject_Str(obj.ptr) orelse return null;
+        defer c.Py_DecRef(text_obj);
+        var len: c.Py_ssize_t = 0;
+        const raw = c.PyUnicode_AsUTF8AndSize(text_obj, &len) orelse return null;
+        const ptr: [*]const u8 = @ptrCast(raw);
+        const text: []const u8 = ptr[0..@intCast(len)];
+        var managed = big_int.Managed.init(allocator) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        errdefer managed.deinit();
+        managed.setString(10, text) catch |err| {
+            switch (err) {
+                error.OutOfMemory => {
+                    raise(.MemoryError, "out of memory");
+                },
+                error.InvalidCharacter, error.InvalidBase => {
+                    raise(.ValueError, "invalid integer string");
+                },
+            }
+            return null;
+        };
+        return .{ .value = managed };
+    }
+
+    pub fn toPyObject(self: BigInt) ?*c.PyObject {
+        const text = self.value.toConst().toStringAlloc(allocator, 10, .lower) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        defer allocator.free(text);
+        const buf = allocator.alloc(u8, text.len + 1) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        defer allocator.free(buf);
+        @memcpy(buf[0..text.len], text);
+        buf[text.len] = 0;
+        return c.PyLong_FromString(@ptrCast(buf.ptr), null, 10);
+    }
+
+    pub fn toObject(self: BigInt) ?Object {
+        const obj = self.toPyObject() orelse return null;
+        return .owned(obj);
+    }
 };
 
 /// Unified Python int representation: fast 64-bit or allocated bigint.
@@ -308,100 +419,96 @@ pub const Int = union(enum) {
             .small => {},
         }
     }
+
+    pub fn fromObject(obj: Object) ?Int {
+        if (!obj.isLong()) {
+            raise(.TypeError, "expected int");
+            return null;
+        }
+        var overflow: c_int = 0;
+        const signed_value = c.PyLong_AsLongLongAndOverflow(obj.ptr, &overflow);
+        if (c.PyErr_Occurred() != null) return null;
+        if (overflow == 0) {
+            return .{ .small = .{ .signed = @intCast(signed_value) } };
+        }
+        if (overflow > 0) {
+            const unsigned_value = c.PyLong_AsUnsignedLongLong(obj.ptr);
+            if (c.PyErr_Occurred() != null) {
+                c.PyErr_Clear();
+                const big = BigInt.fromObject(obj) orelse return null;
+                return .{ .big = big };
+            }
+            return .{ .small = .{ .unsigned = @intCast(unsigned_value) } };
+        }
+        const big = BigInt.fromObject(obj) orelse return null;
+        return .{ .big = big };
+    }
+
+    pub fn toPyObject(value: Int) ?*c.PyObject {
+        return switch (value) {
+            .small => |small| Long.toPyObject(small),
+            .big => |big| big.toPyObject(),
+        };
+    }
+
+    pub fn toObject(value: Int) ?Object {
+        const obj = value.toPyObject() orelse return null;
+        return .owned(obj);
+    }
 };
 
 /// Result of parsing a Python int into a 64-bit signed/unsigned value.
 pub const Long = union(enum) {
     signed: i64,
     unsigned: u64,
-};
 
-/// Convert a Python int into i64 when possible, otherwise u64 if it fits.
-pub fn longAsLong(obj: *c.PyObject) ?Long {
-    var overflow: c_int = 0;
-    const signed_value = c.PyLong_AsLongLongAndOverflow(obj, &overflow);
-    if (c.PyErr_Occurred() != null) return null;
-    if (overflow == 0) {
-        return .{ .signed = @intCast(signed_value) };
-    }
-    if (overflow > 0) {
-        const unsigned_value = c.PyLong_AsUnsignedLongLong(obj);
+    pub fn fromObject(obj: Object) ?Long {
+        if (!obj.isLong()) {
+            raise(.TypeError, "expected int");
+            return null;
+        }
+        var overflow: c_int = 0;
+        const signed_value = c.PyLong_AsLongLongAndOverflow(obj.ptr, &overflow);
         if (c.PyErr_Occurred() != null) return null;
-        return .{ .unsigned = @intCast(unsigned_value) };
-    }
-    raise(.OverflowError, "integer out of range");
-    return null;
-}
-
-/// Convert a Python int to u64 using modulo 2^64 semantics.
-pub fn longAsUnsignedMask(obj: *c.PyObject) ?u64 {
-    const value = c.PyLong_AsUnsignedLongLongMask(obj);
-    if (c.PyErr_Occurred() != null) return null;
-    return @intCast(value);
-}
-
-/// Convert a Python int into Int (64-bit if possible, else bigint).
-pub fn longAsInt(obj: *c.PyObject) ?Int {
-    var overflow: c_int = 0;
-    const signed_value = c.PyLong_AsLongLongAndOverflow(obj, &overflow);
-    if (c.PyErr_Occurred() != null) return null;
-    if (overflow == 0) {
-        return .{ .small = .{ .signed = @intCast(signed_value) } };
-    }
-    if (overflow > 0) {
-        const unsigned_value = c.PyLong_AsUnsignedLongLong(obj);
-        if (c.PyErr_Occurred() != null) {
-            c.PyErr_Clear();
-            const big = bigIntFromLong(obj) orelse return null;
-            return .{ .big = big };
+        if (overflow == 0) {
+            return .{ .signed = @intCast(signed_value) };
         }
-        return .{ .small = .{ .unsigned = @intCast(unsigned_value) } };
-    }
-    const big = bigIntFromLong(obj) orelse return null;
-    return .{ .big = big };
-}
-
-fn bigIntFromLong(obj: *c.PyObject) ?BigInt {
-    const text_obj = c.PyObject_Str(obj) orelse return null;
-    defer c.Py_DecRef(text_obj);
-    var len: c.Py_ssize_t = 0;
-    const raw = c.PyUnicode_AsUTF8AndSize(text_obj, &len) orelse return null;
-    const ptr: [*]const u8 = @ptrCast(raw);
-    const text: []const u8 = ptr[0..@intCast(len)];
-    var managed = big_int.Managed.init(allocator) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    errdefer managed.deinit();
-    managed.setString(10, text) catch |err| {
-        switch (err) {
-            error.OutOfMemory => {
-                raise(.MemoryError, "out of memory");
-            },
-            error.InvalidCharacter, error.InvalidBase => {
-                raise(.ValueError, "invalid integer string");
-            },
+        if (overflow > 0) {
+            const unsigned_value = c.PyLong_AsUnsignedLongLong(obj.ptr);
+            if (c.PyErr_Occurred() != null) return null;
+            return .{ .unsigned = @intCast(unsigned_value) };
         }
+        raise(.OverflowError, "integer out of range");
         return null;
-    };
-    return .{ .value = managed };
-}
+    }
 
-fn bigIntToPy(value: BigInt) ?*c.PyObject {
-    const text = value.value.toConst().toStringAlloc(allocator, 10, .lower) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    defer allocator.free(text);
-    const buf = allocator.alloc(u8, text.len + 1) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    defer allocator.free(buf);
-    @memcpy(buf[0..text.len], text);
-    buf[text.len] = 0;
-    return c.PyLong_FromString(@ptrCast(buf.ptr), null, 10);
-}
+    pub fn unsignedMask(obj: Object) ?u64 {
+        if (!obj.isLong()) {
+            raise(.TypeError, "expected int");
+            return null;
+        }
+        const value = c.PyLong_AsUnsignedLongLongMask(obj.ptr);
+        if (c.PyErr_Occurred() != null) return null;
+        return @intCast(value);
+    }
+
+    pub fn toPyObject(value: Long) ?*c.PyObject {
+        return switch (value) {
+            .signed => |signed_value| c.PyLong_FromLongLong(@intCast(signed_value)),
+            .unsigned => |unsigned_value| c.PyLong_FromUnsignedLongLong(@intCast(unsigned_value)),
+        };
+    }
+
+    pub fn toObject(value: Long) ?Object {
+        const obj = value.toPyObject() orelse return null;
+        return .owned(obj);
+    }
+
+    pub fn fromString(text: [:0]const u8) ?Object {
+        const value = c.PyLong_FromString(@ptrCast(text.ptr), null, 10) orelse return null;
+        return .owned(value);
+    }
+};
 
 /// Wrapper for Python list objects.
 pub const List = struct {
@@ -410,6 +517,23 @@ pub const List = struct {
     /// Borrow a list without changing refcount.
     pub fn borrowed(ptr: *c.PyObject) List {
         return .{ .obj = .borrowed(ptr) };
+    }
+
+    pub fn fromObject(obj: Object) ?List {
+        if (!obj.isList()) {
+            raise(.TypeError, "expected list");
+            return null;
+        }
+        return .{ .obj = .borrowed(obj.ptr) };
+    }
+
+    pub fn toPyObject(self: List) ?*c.PyObject {
+        return self.obj.toPyObject();
+    }
+
+    pub fn toObject(self: List) ?Object {
+        const obj = self.toPyObject() orelse return null;
+        return .owned(obj);
     }
 
     /// Own a list reference.
@@ -421,6 +545,18 @@ pub const List = struct {
     pub fn init(size: usize) ?List {
         const list_obj = c.PyList_New(@intCast(size)) orelse return null;
         return .owned(list_obj);
+    }
+
+    /// Create a new list from a Zig slice.
+    pub fn fromSlice(comptime T: type, values: []const T) ?List {
+        var list: List = .init(values.len) orelse return null;
+        for (values, 0..) |v, i| {
+            if (!list.set(T, i, v)) {
+                list.deinit();
+                return null;
+            }
+        }
+        return list;
     }
 
     /// Release the reference if owned.
@@ -442,8 +578,8 @@ pub const List = struct {
     }
 
     /// Set the item at the given index.
-    pub fn set(self: List, index: usize, value: anytype) bool {
-        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+    pub fn set(self: List, comptime T: type, index: usize, value: T) bool {
+        const value_obj = toPy(T, value) orelse return false;
         if (c.PyList_SetItem(self.obj.ptr, @intCast(index), value_obj) != 0) {
             c.Py_DecRef(value_obj);
             return false;
@@ -452,10 +588,31 @@ pub const List = struct {
     }
 
     /// Append an item to the list.
-    pub fn append(self: List, value: anytype) bool {
-        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+    pub fn append(self: List, comptime T: type, value: T) bool {
+        const value_obj = toPy(T, value) orelse return false;
         defer c.Py_DecRef(value_obj);
         return c.PyList_Append(self.obj.ptr, value_obj) == 0;
+    }
+
+    /// Convert this list into an owned Zig slice.
+    pub fn toSlice(self: List, comptime T: type, gpa: Allocator) ?[]T {
+        const size = self.len() orelse return null;
+        const buffer = gpa.alloc(T, size) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        for (0..size) |i| {
+            const item = self.get(i) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            const value = fromPy(T, item.ptr) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            buffer[i] = value;
+        }
+        return buffer;
     }
 };
 
@@ -468,6 +625,23 @@ pub const Dict = struct {
         return .{ .obj = .borrowed(ptr) };
     }
 
+    pub fn fromObject(obj: Object) ?Dict {
+        if (!obj.isDict()) {
+            raise(.TypeError, "expected dict");
+            return null;
+        }
+        return .{ .obj = .borrowed(obj.ptr) };
+    }
+
+    pub fn toPyObject(self: Dict) ?*c.PyObject {
+        return self.obj.toPyObject();
+    }
+
+    pub fn toObject(self: Dict) ?Object {
+        const obj = self.toPyObject() orelse return null;
+        return .owned(obj);
+    }
+
     /// Own a dict reference.
     pub fn owned(ptr: *c.PyObject) Dict {
         return .{ .obj = .owned(ptr) };
@@ -477,6 +651,22 @@ pub const Dict = struct {
     pub fn init() ?Dict {
         const dict_obj = c.PyDict_New() orelse return null;
         return .owned(dict_obj);
+    }
+
+    /// Create a dict from key/value entries.
+    pub fn fromEntries(
+        comptime K: type,
+        comptime V: type,
+        entries: []const struct { key: K, value: V },
+    ) ?Dict {
+        var dict: Dict = .init() orelse return null;
+        for (entries) |entry| {
+            if (!dict.setItem(K, entry.key, V, entry.value)) {
+                dict.deinit();
+                return null;
+            }
+        }
+        return dict;
     }
 
     /// Release the reference if owned.
@@ -492,8 +682,8 @@ pub const Dict = struct {
     }
 
     /// Borrow a value by key.
-    pub fn getItem(self: Dict, key: anytype) ?Object {
-        const key_obj = toPy(@TypeOf(key), key) orelse return null;
+    pub fn getItem(self: Dict, comptime K: type, key: K) ?Object {
+        const key_obj = toPy(K, key) orelse return null;
         defer c.Py_DecRef(key_obj);
         const item = c.PyDict_GetItemWithError(self.obj.ptr, key_obj);
         if (item == null) {
@@ -503,10 +693,10 @@ pub const Dict = struct {
     }
 
     /// Set a key to a value.
-    pub fn setItem(self: Dict, key: anytype, value: anytype) bool {
-        const key_obj = toPy(@TypeOf(key), key) orelse return false;
+    pub fn setItem(self: Dict, comptime K: type, key: K, comptime V: type, value: V) bool {
+        const key_obj = toPy(K, key) orelse return false;
         defer c.Py_DecRef(key_obj);
-        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+        const value_obj = toPy(V, value) orelse return false;
         defer c.Py_DecRef(value_obj);
         return c.PyDict_SetItem(self.obj.ptr, key_obj, value_obj) == 0;
     }
@@ -515,12 +705,40 @@ pub const Dict = struct {
     pub fn iter(self: Dict) DictIter {
         return .{ .dict = self.obj.ptr };
     }
-};
 
-/// Borrowed dict key/value pair.
-pub const DictEntry = struct {
-    key: Object,
-    value: Object,
+    fn Entry(comptime K: type, comptime V: type) type {
+        return struct { key: K, value: V };
+    }
+
+    /// Convert this dict into an owned slice of key/value pairs.
+    pub fn toEntries(
+        self: Dict,
+        comptime K: type,
+        comptime V: type,
+        gpa: Allocator,
+    ) ?[]Entry(K, V) {
+        const size = self.len() orelse return null;
+        const buffer = gpa.alloc(Entry(K, V), size) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        var it = self.iter();
+        var i: usize = 0;
+        while (it.next()) |entry| {
+            if (i >= size) break;
+            const key = fromPy(K, entry.key.ptr) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            const value = fromPy(V, entry.value.ptr) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            buffer[i] = .{ .key = key, .value = value };
+            i += 1;
+        }
+        return buffer[0..i];
+    }
 };
 
 /// Iterator over dict entries using PyDict_Next.
@@ -528,8 +746,26 @@ pub const DictIter = struct {
     dict: *c.PyObject,
     pos: c.Py_ssize_t = 0,
 
+    /// Borrowed dict key/value pair.
+    pub const Entry = struct {
+        key: Object,
+        value: Object,
+    };
+
+    pub fn fromObject(obj: Object) ?@This() {
+        if (!obj.isDict()) {
+            raise(.TypeError, "expected dict");
+            return null;
+        }
+        return .{ .dict = obj.ptr };
+    }
+
+    pub fn fromPtr(ptr: *c.PyObject) ?@This() {
+        return .fromObject(.borrowed(ptr));
+    }
+
     /// Return the next borrowed entry, or null when complete.
-    pub fn next(self: *DictIter) ?DictEntry {
+    pub fn next(self: *@This()) ?Entry {
         var key: ?*c.PyObject = null;
         var value: ?*c.PyObject = null;
         if (c.PyDict_Next(self.dict, &self.pos, &key, &value) == 0) return null;
@@ -549,6 +785,23 @@ pub const Tuple = struct {
         return .{ .obj = .borrowed(ptr) };
     }
 
+    pub fn fromObject(obj: Object) ?Tuple {
+        if (!obj.isTuple()) {
+            raise(.TypeError, "expected tuple");
+            return null;
+        }
+        return .{ .obj = .borrowed(obj.ptr) };
+    }
+
+    pub fn toPyObject(self: Tuple) ?*c.PyObject {
+        return self.obj.toPyObject();
+    }
+
+    pub fn toObject(self: Tuple) ?Object {
+        const obj = self.toPyObject() orelse return null;
+        return .owned(obj);
+    }
+
     /// Own a tuple reference.
     pub fn owned(ptr: *c.PyObject) Tuple {
         return .{ .obj = .owned(ptr) };
@@ -557,6 +810,23 @@ pub const Tuple = struct {
     /// Create a new tuple with the given size.
     pub fn init(size: usize) ?Tuple {
         const tuple_obj = c.PyTuple_New(@intCast(size)) orelse return null;
+        return .owned(tuple_obj);
+    }
+
+    /// Create a new tuple from a Zig slice.
+    pub fn fromSlice(comptime T: type, values: []const T) ?Tuple {
+        const tuple_obj = c.PyTuple_New(@intCast(values.len)) orelse return null;
+        for (values, 0..) |v, i| {
+            const item_obj = toPy(T, v) orelse {
+                c.Py_DecRef(tuple_obj);
+                return null;
+            };
+            if (c.PyTuple_SetItem(tuple_obj, @intCast(i), item_obj) != 0) {
+                c.Py_DecRef(item_obj);
+                c.Py_DecRef(tuple_obj);
+                return null;
+            }
+        }
         return .owned(tuple_obj);
     }
 
@@ -579,13 +849,34 @@ pub const Tuple = struct {
     }
 
     /// Set the item at the given index.
-    pub fn set(self: Tuple, index: usize, value: anytype) bool {
-        const value_obj = toPy(@TypeOf(value), value) orelse return false;
+    pub fn set(self: Tuple, comptime T: type, index: usize, value: T) bool {
+        const value_obj = toPy(T, value) orelse return false;
         if (c.PyTuple_SetItem(self.obj.ptr, @intCast(index), value_obj) != 0) {
             c.Py_DecRef(value_obj);
             return false;
         }
         return true;
+    }
+
+    /// Convert this tuple into an owned Zig slice.
+    pub fn toSlice(self: Tuple, comptime T: type, gpa: Allocator) ?[]T {
+        const size = self.len() orelse return null;
+        const buffer = gpa.alloc(T, size) catch {
+            raise(.MemoryError, "out of memory");
+            return null;
+        };
+        for (0..size) |i| {
+            const item = self.get(i) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            const value = fromPy(T, item.ptr) orelse {
+                gpa.free(buffer);
+                return null;
+            };
+            buffer[i] = value;
+        }
+        return buffer;
     }
 };
 
@@ -594,22 +885,18 @@ pub const GIL = struct {
     state: c.PyGILState_STATE,
 
     /// Acquire the GIL and return a guard.
-    pub fn acquire() GIL {
+    pub fn acquire() @This() {
         return .{ .state = c.PyGILState_Ensure() };
     }
 
     /// Release the GIL for this guard.
-    pub fn deinit(self: *GIL) void {
+    pub fn deinit(self: *const @This()) void {
         c.PyGILState_Release(self.state);
     }
 };
 
-// ============================================================================
-// Type checking functions (operate on raw *c.PyObject)
-// ============================================================================
-
 /// Return true if the object is Python None.
-pub fn checkNone(obj: *c.PyObject) bool {
+inline fn checkNone(obj: *c.PyObject) bool {
     if (@hasDecl(c, "Py_IsNone")) {
         return c.Py_IsNone(obj) != 0;
     }
@@ -617,17 +904,17 @@ pub fn checkNone(obj: *c.PyObject) bool {
 }
 
 /// Return true if the object is a Unicode string.
-pub fn checkUnicode(obj: *c.PyObject) bool {
+inline fn checkUnicode(obj: *c.PyObject) bool {
     return c.PyUnicode_Check(obj) != 0;
 }
 
 /// Return true if the object is a bytes object.
-pub fn checkBytes(obj: *c.PyObject) bool {
+inline fn checkBytes(obj: *c.PyObject) bool {
     return c.PyBytes_Check(obj) != 0;
 }
 
 /// Return true if the object is a bool.
-pub fn checkBool(obj: *c.PyObject) bool {
+inline fn checkBool(obj: *c.PyObject) bool {
     // Avoid using PyBool_Check macro which relies on _PyObject_CAST_CONST
     // that Zig can't translate on Python 3.10. Instead, compare type directly.
     const obj_type = c.Py_TYPE(obj);
@@ -635,105 +922,33 @@ pub fn checkBool(obj: *c.PyObject) bool {
 }
 
 /// Return true if the object is an int.
-pub fn checkLong(obj: *c.PyObject) bool {
+inline fn checkLong(obj: *c.PyObject) bool {
     return c.PyLong_Check(obj) != 0;
 }
 
+/// Return true if the object is a Buffer.
+inline fn checkBuffer(obj: *c.PyObject) bool {
+    return c.PyObject_CheckBuffer(obj) != 0;
+}
+
 /// Return true if the object is a float.
-pub fn checkFloat(obj: *c.PyObject) bool {
+inline fn checkFloat(obj: *c.PyObject) bool {
     return c.PyFloat_Check(obj) != 0;
 }
 
 /// Return true if the object is a list.
-pub fn checkList(obj: *c.PyObject) bool {
+inline fn checkList(obj: *c.PyObject) bool {
     return c.PyList_Check(obj) != 0;
 }
 
 /// Return true if the object is a tuple.
-pub fn checkTuple(obj: *c.PyObject) bool {
+inline fn checkTuple(obj: *c.PyObject) bool {
     return c.PyTuple_Check(obj) != 0;
 }
 
 /// Return true if the object is a dict.
-pub fn checkDict(obj: *c.PyObject) bool {
+inline fn checkDict(obj: *c.PyObject) bool {
     return c.PyDict_Check(obj) != 0;
-}
-
-// ============================================================================
-// Slice extraction (operate on raw *c.PyObject)
-// ============================================================================
-
-/// Borrow the UTF-8 slice for a Unicode object.
-pub fn sliceUnicode(obj: *c.PyObject) ?[]const u8 {
-    var len: c.Py_ssize_t = 0;
-    const raw = c.PyUnicode_AsUTF8AndSize(obj, &len) orelse return null;
-    const ptr: [*]const u8 = @ptrCast(raw);
-    return ptr[0..@intCast(len)];
-}
-
-/// Borrow the byte slice for a bytes object.
-pub fn sliceBytes(obj: *c.PyObject) ?[]const u8 {
-    var len: c.Py_ssize_t = 0;
-    var raw: [*c]u8 = null;
-    if (c.PyBytes_AsStringAndSize(obj, &raw, &len) != 0) return null;
-    const ptr: [*]const u8 = @ptrCast(raw);
-    return ptr[0..@intCast(len)];
-}
-
-// ============================================================================
-// Object utilities
-// ============================================================================
-
-/// Borrow Python None as an Object.
-pub fn none() Object {
-    return .borrowed(ffi.pyNone());
-}
-
-/// Return the string representation of an object.
-pub fn objectStr(obj: *c.PyObject) ?Object {
-    const value = c.PyObject_Str(obj) orelse return null;
-    return .owned(value);
-}
-
-/// Convert an object to truthiness.
-pub fn objectIsTrue(obj: *c.PyObject) ?bool {
-    const value = c.PyObject_IsTrue(obj);
-    if (value < 0) return null;
-    return value != 0;
-}
-
-/// Convert a float object to f64.
-pub fn floatAsDouble(obj: *c.PyObject) ?f64 {
-    const value = c.PyFloat_AsDouble(obj);
-    if (c.PyErr_Occurred() != null) return null;
-    return value;
-}
-
-/// Create a long from a base-10 string.
-pub fn longFromString(text: [:0]const u8) ?Object {
-    const value = c.PyLong_FromString(@ptrCast(text.ptr), null, 10) orelse return null;
-    return .owned(value);
-}
-
-/// Create a dict iterator for low-level loops.
-pub fn dictIter(dict: *c.PyObject) DictIter {
-    return .{ .dict = dict };
-}
-
-/// Advance a dict iteration with PyDict_Next.
-pub fn dictNext(
-    dict: *c.PyObject,
-    pos: *c.Py_ssize_t,
-    key: *?*c.PyObject,
-    value: *?*c.PyObject,
-) bool {
-    return c.PyDict_Next(dict, pos, key, value) != 0;
-}
-
-/// Convert a Zig value to a Python object and wrap it.
-pub fn toObject(value: anytype) ?Object {
-    const obj = toPy(@TypeOf(value), value) orelse return null;
-    return .owned(obj);
 }
 
 /// Import a module by name.
@@ -742,132 +957,6 @@ pub fn importModule(name: [:0]const u8) ?Object {
     if (obj == null) return null;
     return .owned(obj);
 }
-
-// ============================================================================
-// Collection conversions
-// ============================================================================
-
-/// Convert a Python list into an owned slice.
-pub fn listToSlice(comptime T: type, gpa: Allocator, list: List) ?[]T {
-    const size = list.len() orelse return null;
-    const buffer = gpa.alloc(T, size) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    for (0..size) |i| {
-        const item = list.get(i) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        const value = fromPy(T, item.ptr) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        buffer[i] = value;
-    }
-    return buffer;
-}
-
-/// Convert a Python tuple into an owned slice.
-pub fn tupleToSlice(comptime T: type, gpa: Allocator, tuple: Tuple) ?[]T {
-    const size = tuple.len() orelse return null;
-    const buffer = gpa.alloc(T, size) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    for (0..size) |i| {
-        const item = tuple.get(i) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        const value = fromPy(T, item.ptr) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        buffer[i] = value;
-    }
-    return buffer;
-}
-
-/// Convert a Python dict into an owned slice of key/value pairs.
-pub fn dictToEntries(
-    comptime K: type,
-    comptime V: type,
-    gpa: Allocator,
-    dict: Dict,
-) ?[]struct { key: K, value: V } {
-    const size = dict.len() orelse return null;
-    const Entry = struct { key: K, value: V };
-    const buffer = gpa.alloc(Entry, size) catch {
-        raise(.MemoryError, "out of memory");
-        return null;
-    };
-    var it = dict.iter();
-    var i: usize = 0;
-    while (it.next()) |entry| {
-        if (i >= size) break;
-        const key = fromPy(K, entry.key.ptr) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        const value = fromPy(V, entry.value.ptr) orelse {
-            gpa.free(buffer);
-            return null;
-        };
-        buffer[i] = .{ .key = key, .value = value };
-        i += 1;
-    }
-    return buffer[0..i];
-}
-
-/// Convert a Zig slice into a Python list.
-pub fn toList(comptime T: type, values: []const T) ?List {
-    var list: List = .init(values.len) orelse return null;
-    for (values, 0..) |v, i| {
-        if (!list.set(i, v)) {
-            list.deinit();
-            return null;
-        }
-    }
-    return list;
-}
-
-/// Convert a Zig slice into a Python tuple.
-pub fn toTuple(comptime T: type, values: []const T) ?Tuple {
-    const tuple_obj = c.PyTuple_New(@intCast(values.len)) orelse return null;
-    for (values, 0..) |v, i| {
-        const item_obj = toPy(T, v) orelse {
-            c.Py_DecRef(tuple_obj);
-            return null;
-        };
-        if (c.PyTuple_SetItem(tuple_obj, @intCast(i), item_obj) != 0) {
-            c.Py_DecRef(item_obj);
-            c.Py_DecRef(tuple_obj);
-            return null;
-        }
-    }
-    return Tuple.owned(tuple_obj);
-}
-
-/// Convert a Zig slice of entries into a Python dict.
-pub fn toDict(
-    comptime K: type,
-    comptime V: type,
-    entries: []const struct { key: K, value: V },
-) ?Dict {
-    var dict: Dict = .init() orelse return null;
-    for (entries) |entry| {
-        if (!dict.setItem(entry.key, entry.value)) {
-            dict.deinit();
-            return null;
-        }
-    }
-    return dict;
-}
-
-// ============================================================================
-// Python <-> Zig type conversions
-// ============================================================================
 
 /// Convert a Python object to a Zig value.
 pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
@@ -889,81 +978,22 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
     return switch (T) {
         // Wrapper types
         Object => Object.borrowed(ptr),
-        Bytes => {
-            if (c.PyBytes_Check(ptr) == 0) {
-                raise(.TypeError, "expected bytes");
-                return null;
-            }
-            return Bytes.borrowed(ptr);
-        },
-        BigInt => {
-            if (c.PyLong_Check(ptr) == 0) {
-                raise(.TypeError, "expected int");
-                return null;
-            }
-            return bigIntFromLong(ptr);
-        },
-        Long => {
-            if (c.PyLong_Check(ptr) == 0) {
-                raise(.TypeError, "expected int");
-                return null;
-            }
-            return longAsLong(ptr);
-        },
-        Int => {
-            if (c.PyLong_Check(ptr) == 0) {
-                raise(.TypeError, "expected int");
-                return null;
-            }
-            return longAsInt(ptr);
-        },
-        Buffer => {
-            if (c.PyObject_CheckBuffer(ptr) == 0) {
-                raise(.TypeError, "expected buffer");
-                return null;
-            }
-            return Buffer.init(.borrowed(ptr)) orelse return null;
-        },
-        List => {
-            if (c.PyList_Check(ptr) == 0) {
-                raise(.TypeError, "expected list");
-                return null;
-            }
-            return List.borrowed(ptr);
-        },
-        Tuple => {
-            if (c.PyTuple_Check(ptr) == 0) {
-                raise(.TypeError, "expected tuple");
-                return null;
-            }
-            return Tuple.borrowed(ptr);
-        },
-        Dict => {
-            if (c.PyDict_Check(ptr) == 0) {
-                raise(.TypeError, "expected dict");
-                return null;
-            }
-            return Dict.borrowed(ptr);
-        },
+        Bytes => Bytes.fromObject(.borrowed(ptr)),
+        BigInt => BigInt.fromObject(.borrowed(ptr)),
+        Long => Long.fromObject(.borrowed(ptr)),
+        Int => Int.fromObject(.borrowed(ptr)),
+        Buffer => Buffer.fromObject(.borrowed(ptr)),
+        List => List.fromObject(.borrowed(ptr)),
+        Tuple => Tuple.fromObject(.borrowed(ptr)),
+        Dict => Dict.fromObject(.borrowed(ptr)),
         // String slices
-        []const u8 => {
-            var len: c.Py_ssize_t = 0;
-            const raw = c.PyUnicode_AsUTF8AndSize(ptr, &len) orelse return null;
-            const cptr: [*]const u8 = @ptrCast(raw);
-            return cptr[0..@intCast(len)];
-        },
+        []const u8 => return Object.borrowed(ptr).unicodeSlice(),
         [:0]const u8 => {
-            var len: c.Py_ssize_t = 0;
-            const raw = c.PyUnicode_AsUTF8AndSize(ptr, &len) orelse return null;
-            const cptr: [*:0]const u8 = @ptrCast(raw);
-            return cptr[0..@intCast(len) :0];
+            const slice = Object.borrowed(ptr).unicodeSlice() orelse return null;
+            return slice[0..slice.len :0];
         },
         // Boolean
-        bool => {
-            const result = c.PyObject_IsTrue(ptr);
-            if (result < 0) return null;
-            return result != 0;
-        },
+        bool => return Object.borrowed(ptr).isTrue(),
         // Numeric types fall through to typeInfo-based handling
         else => switch (@typeInfo(T)) {
             .int => |info| switch (info.signedness) {
@@ -1012,48 +1042,14 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
         // Raw PyObject pointers pass through
         ?*c.PyObject, *c.PyObject => value,
         // Wrapper types - transfer or share ownership appropriately
-        Object => {
-            if (!value.owns_ref) {
-                c.Py_IncRef(value.ptr);
-            }
-            return value.ptr;
-        },
-        Bytes => {
-            if (!value.obj.owns_ref) {
-                c.Py_IncRef(value.obj.ptr);
-            }
-            return value.obj.ptr;
-        },
-        BigInt => bigIntToPy(value),
-        Long => switch (value) {
-            .signed => |v| c.PyLong_FromLongLong(@intCast(v)),
-            .unsigned => |v| c.PyLong_FromUnsignedLongLong(@intCast(v)),
-        },
-        Int => switch (value) {
-            .small => |small| switch (small) {
-                .signed => |v| c.PyLong_FromLongLong(@intCast(v)),
-                .unsigned => |v| c.PyLong_FromUnsignedLongLong(@intCast(v)),
-            },
-            .big => |big| bigIntToPy(big),
-        },
-        List => {
-            if (!value.obj.owns_ref) {
-                c.Py_IncRef(value.obj.ptr);
-            }
-            return value.obj.ptr;
-        },
-        Tuple => {
-            if (!value.obj.owns_ref) {
-                c.Py_IncRef(value.obj.ptr);
-            }
-            return value.obj.ptr;
-        },
-        Dict => {
-            if (!value.obj.owns_ref) {
-                c.Py_IncRef(value.obj.ptr);
-            }
-            return value.obj.ptr;
-        },
+        Object => value.toPyObject(),
+        Bytes => value.toPyObject(),
+        BigInt => value.toPyObject(),
+        Long => value.toPyObject(),
+        Int => value.toPyObject(),
+        List => value.toPyObject(),
+        Tuple => value.toPyObject(),
+        Dict => value.toPyObject(),
         // String slices
         []const u8, [:0]const u8 => c.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)),
         // Boolean
@@ -1073,9 +1069,10 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
     };
 }
 
-// ============================================================================
-// Helper utilities
-// ============================================================================
+/// Borrow Python None as an Object.
+pub fn none() Object {
+    return .borrowed(ffi.pyNone());
+}
 
 /// Check if a type is optional.
 pub fn isOptionalType(comptime T: type) bool {

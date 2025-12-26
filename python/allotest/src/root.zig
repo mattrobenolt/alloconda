@@ -153,25 +153,25 @@ fn identity_object(x: py.Object) py.Object {
 }
 
 fn int64_or_uint64(value: py.Object) ?py.Tuple {
-    const parsed = py.longAsLong(value.ptr) orelse return null;
+    const parsed = py.Long.fromObject(value) orelse return null;
     var result = py.Tuple.init(2) orelse return null;
     const is_signed = switch (parsed) {
         .signed => true,
         .unsigned => false,
     };
-    if (!result.set(0, is_signed)) {
+    if (!result.set(bool, 0, is_signed)) {
         result.deinit();
         return null;
     }
     switch (parsed) {
         .signed => |v| {
-            if (!result.set(1, v)) {
+            if (!result.set(@TypeOf(v), 1, v)) {
                 result.deinit();
                 return null;
             }
         },
         .unsigned => |v| {
-            if (!result.set(1, v)) {
+            if (!result.set(@TypeOf(v), 1, v)) {
                 result.deinit();
                 return null;
             }
@@ -181,12 +181,12 @@ fn int64_or_uint64(value: py.Object) ?py.Tuple {
 }
 
 fn mask_u32(value: py.Object) ?u32 {
-    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
+    const masked = py.Long.unsignedMask(value) orelse return null;
     return @truncate(masked);
 }
 
 fn mask_u64(value: py.Object) ?u64 {
-    return py.longAsUnsignedMask(value.ptr);
+    return py.Long.unsignedMask(value);
 }
 
 fn bigint_to_string(value: py.BigInt) CallError!py.Object {
@@ -197,19 +197,19 @@ fn bigint_to_string(value: py.BigInt) CallError!py.Object {
         return error.PythonError;
     };
     defer py.allocator.free(text);
-    return py.toObject(@as([]const u8, text)) orelse error.PythonError;
+    return py.Object.from([]const u8, text) orelse error.PythonError;
 }
 
 fn bigint_roundtrip(value: py.BigInt) CallError!py.Object {
     var big = value;
     defer big.deinit();
-    return py.toObject(big) orelse error.PythonError;
+    return big.toObject() orelse error.PythonError;
 }
 
 fn int_roundtrip(value: py.Int) CallError!py.Object {
     var int_value = value;
     defer int_value.deinit();
-    return py.toObject(int_value) orelse error.PythonError;
+    return int_value.toObject() orelse error.PythonError;
 }
 
 // ============================================================================
@@ -248,9 +248,7 @@ fn buffer_sum(data: py.Buffer) CallError!u64 {
     defer buffer.release();
     const slice = buffer.slice();
     var total: u64 = 0;
-    for (slice) |byte| {
-        total += byte;
-    }
+    for (slice) |byte| total += byte;
     return total;
 }
 
@@ -282,19 +280,7 @@ fn list_sum(values: py.List) CallError!i64 {
 
 fn list_create(a: i64, b: i64, c: i64) CallError!py.List {
     var list = py.List.init(3) orelse return error.PythonError;
-    const obj_a = py.toObject(a) orelse {
-        list.deinit();
-        return error.PythonError;
-    };
-    const obj_b = py.toObject(b) orelse {
-        list.deinit();
-        return error.PythonError;
-    };
-    const obj_c = py.toObject(c) orelse {
-        list.deinit();
-        return error.PythonError;
-    };
-    if (!list.set(0, obj_a) or !list.set(1, obj_b) or !list.set(2, obj_c)) {
+    if (!list.set(i64, 0, a) or !list.set(i64, 1, b) or !list.set(i64, 2, c)) {
         list.deinit();
         return error.PythonError;
     }
@@ -302,15 +288,13 @@ fn list_create(a: i64, b: i64, c: i64) CallError!py.List {
 }
 
 fn list_append(list: py.List, value: i64) CallError!py.List {
-    const obj = py.toObject(value) orelse return error.PythonError;
-    if (!list.append(obj)) return error.PythonError;
+    if (!list.append(i64, value)) return error.PythonError;
     return list;
 }
 
 fn list_set(list: py.List, index: i64, value: i64) CallError!py.List {
-    const obj = py.toObject(value) orelse return error.PythonError;
     const i: usize = @intCast(index);
-    if (!list.set(i, obj)) return error.PythonError;
+    if (!list.set(i64, i, value)) return error.PythonError;
     return list;
 }
 
@@ -323,7 +307,7 @@ fn dict_len(dict: py.Dict) CallError!usize {
 }
 
 fn dict_get(dict: py.Dict, key: []const u8) CallError!?i64 {
-    const item = dict.getItem(key);
+    const item = dict.getItem([]const u8, key);
     if (item == null) {
         if (py.errorOccurred()) return error.PythonError;
         return null;
@@ -333,11 +317,7 @@ fn dict_get(dict: py.Dict, key: []const u8) CallError!?i64 {
 
 fn dict_create(key: []const u8, value: i64) CallError!py.Dict {
     var dict = py.Dict.init() orelse return error.PythonError;
-    const obj = py.toObject(value) orelse {
-        dict.deinit();
-        return error.PythonError;
-    };
-    if (!dict.setItem(key, obj)) {
+    if (!dict.setItem([]const u8, key, i64, value)) {
         dict.deinit();
         return error.PythonError;
     }
@@ -345,18 +325,17 @@ fn dict_create(key: []const u8, value: i64) CallError!py.Dict {
 }
 
 fn dict_set(dict: py.Dict, key: []const u8, value: i64) CallError!py.Dict {
-    const obj = py.toObject(value) orelse return error.PythonError;
-    if (!dict.setItem(key, obj)) return error.PythonError;
+    if (!dict.setItem([]const u8, key, i64, value)) return error.PythonError;
     return dict;
 }
 
 fn dict_keys(dict: py.Dict) CallError!py.List {
     const size = dict.len() orelse return error.PythonError;
     var list = py.List.init(size) orelse return error.PythonError;
-    var iter = dict.iter();
+    var iter = py.DictIter.fromObject(dict.obj) orelse return error.PythonError;
     var i: usize = 0;
     while (iter.next()) |entry| {
-        if (!list.set(i, entry.key.incref())) {
+        if (!list.set(py.Object, i, entry.key.incref())) {
             list.deinit();
             return error.PythonError;
         }
@@ -381,17 +360,17 @@ fn tuple_get(tuple: py.Tuple, index: i64) CallError!py.Object {
 
 fn tuple_create(a: i64, b: i64) CallError!py.Object {
     const values: [2]i64 = .{ a, b };
-    const tuple = py.toTuple(i64, &values) orelse return error.PythonError;
+    const tuple = py.Tuple.fromSlice(i64, &values) orelse return error.PythonError;
     return tuple.obj;
 }
 
 fn tuple_create_manual(a: i64, b: i64) CallError!py.Object {
     var tuple = py.Tuple.init(2) orelse return error.PythonError;
-    if (!tuple.set(0, a)) {
+    if (!tuple.set(i64, 0, a)) {
         tuple.deinit();
         return error.PythonError;
     }
-    if (!tuple.set(1, b)) {
+    if (!tuple.set(i64, 1, b)) {
         tuple.deinit();
         return error.PythonError;
     }
@@ -407,12 +386,12 @@ fn obj_call0(obj: py.Object) CallError!py.Object {
 }
 
 fn obj_call1(obj: py.Object, arg: py.Object) CallError!py.Object {
-    const result = obj.call1(arg.ptr) orelse return error.PythonError;
+    const result = obj.call1(py.Object, arg) orelse return error.PythonError;
     return result;
 }
 
 fn obj_call2(obj: py.Object, arg1: py.Object, arg2: py.Object) CallError!py.Object {
-    const result = obj.call2(arg1.ptr, arg2.ptr) orelse return error.PythonError;
+    const result = obj.call2(py.Object, arg1, py.Object, arg2) orelse return error.PythonError;
     return result;
 }
 
@@ -421,7 +400,7 @@ fn obj_getattr(obj: py.Object, name: [:0]const u8) CallError!py.Object {
 }
 
 fn obj_setattr(obj: py.Object, name: [:0]const u8, value: py.Object) CallError!bool {
-    return obj.setAttr(name, value);
+    return obj.setAttr(name, py.Object, value);
 }
 
 fn obj_callmethod0(obj: py.Object, name: [:0]const u8) CallError!py.Object {
@@ -429,7 +408,7 @@ fn obj_callmethod0(obj: py.Object, name: [:0]const u8) CallError!py.Object {
 }
 
 fn obj_callmethod1(obj: py.Object, name: [:0]const u8, arg: py.Object) CallError!py.Object {
-    return obj.callMethod1(name, arg.ptr) orelse error.PythonError;
+    return obj.callMethod1(name, py.Object, arg) orelse error.PythonError;
 }
 
 fn obj_is_callable(obj: py.Object) bool {
@@ -580,7 +559,7 @@ fn import_math_pi() CallError!f64 {
 }
 
 fn call_upper(value: []const u8) CallError![]const u8 {
-    const obj = py.toObject(value) orelse return error.PythonError;
+    const obj = py.Object.from([]const u8, value) orelse return error.PythonError;
     defer obj.deinit();
     const out = obj.callMethod0("upper") orelse return error.PythonError;
     defer out.deinit();
@@ -618,8 +597,8 @@ fn counter_get(self: py.Object) CallError!i64 {
     const count_obj = self.getAttr("_count") orelse {
         // Attribute doesn't exist - clear the AttributeError and initialize
         py.ffi.c.PyErr_Clear();
-        const zero = py.toObject(@as(i64, 0)) orelse return error.PythonError;
-        if (!self.setAttr("_count", zero)) return error.PythonError;
+        const zero = py.Object.from(i64, @as(i64, 0)) orelse return error.PythonError;
+        if (!self.setAttr("_count", py.Object, zero)) return error.PythonError;
         return 0;
     };
     defer count_obj.deinit();
@@ -629,20 +608,20 @@ fn counter_get(self: py.Object) CallError!i64 {
 fn counter_increment(self: py.Object) CallError!i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + 1;
-    const new_obj = py.toObject(new_val) orelse return error.PythonError;
-    if (!self.setAttr("_count", new_obj)) return error.PythonError;
+    const new_obj = py.Object.from(i64, new_val) orelse return error.PythonError;
+    if (!self.setAttr("_count", py.Object, new_obj)) return error.PythonError;
     return new_val;
 }
 
 fn counter_add(self: py.Object, value: i64) CallError!i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + value;
-    const new_obj = py.toObject(new_val) orelse return error.PythonError;
-    if (!self.setAttr("_count", new_obj)) return error.PythonError;
+    const new_obj = py.Object.from(i64, new_val) orelse return error.PythonError;
+    if (!self.setAttr("_count", py.Object, new_obj)) return error.PythonError;
     return new_val;
 }
 
 fn counter_reset(self: py.Object) CallError!void {
-    const zero = py.toObject(@as(i64, 0)) orelse return error.PythonError;
-    if (!self.setAttr("_count", zero)) return error.PythonError;
+    const zero = py.Object.from(i64, @as(i64, 0)) orelse return error.PythonError;
+    if (!self.setAttr("_count", py.Object, zero)) return error.PythonError;
 }

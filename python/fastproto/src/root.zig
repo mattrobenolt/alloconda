@@ -130,7 +130,7 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
 });
 
 fn encodeVarint(value: py.Object) ?py.Bytes {
-    const parsed = py.longAsLong(value.ptr) orelse return null;
+    const parsed = py.Long.fromObject(value) orelse return null;
     var buf: [wire.max_varint_len]u8 = undefined;
     const len = switch (parsed) {
         .signed => |signed| wire.encodeVarint(i64, signed, &buf) catch return null,
@@ -161,16 +161,16 @@ fn decodeVarint(data: py.Buffer, offset: usize) ?py.Tuple {
         }
         return null;
     };
-    return tuple2(value, offset + bytes_read);
+    return tuple2(u64, value, usize, offset + bytes_read);
 }
 
-fn tuple2(first: anytype, second: anytype) ?py.Tuple {
+fn tuple2(comptime T0: type, first: T0, comptime T1: type, second: T1) ?py.Tuple {
     var result = py.Tuple.init(2) orelse return null;
-    if (!result.set(0, first)) {
+    if (!result.set(T0, 0, first)) {
         result.deinit();
         return null;
     }
-    if (!result.set(1, second)) {
+    if (!result.set(T1, 1, second)) {
         result.deinit();
         return null;
     }
@@ -178,7 +178,7 @@ fn tuple2(first: anytype, second: anytype) ?py.Tuple {
 }
 
 fn encodeFixed32(value: py.Object) ?py.Bytes {
-    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
+    const masked = py.Long.unsignedMask(value) orelse return null;
     const cast_value: u32 = @truncate(masked);
     var buf: [4]u8 = undefined;
     mem.writeInt(u32, &buf, cast_value, .little);
@@ -192,7 +192,7 @@ fn encodeSfixed32(value: i32) ?py.Bytes {
 }
 
 fn encodeFixed64(value: py.Object) ?py.Bytes {
-    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
+    const masked = py.Long.unsignedMask(value) orelse return null;
     var buf: [8]u8 = undefined;
     mem.writeInt(u64, &buf, masked, .little);
     return .fromSlice(&buf);
@@ -231,7 +231,7 @@ fn decodeFixed32(data: py.Buffer, offset: usize) ?py.Tuple {
     const raw = slice[offset .. offset + 4];
     const raw_ptr: *const [4]u8 = @ptrCast(raw.ptr);
     const value = mem.readInt(u32, raw_ptr, .little);
-    return tuple2(value, offset + 4);
+    return tuple2(u32, value, usize, offset + 4);
 }
 
 fn decodeFixed64(data: py.Buffer, offset: usize) ?py.Tuple {
@@ -249,7 +249,7 @@ fn decodeFixed64(data: py.Buffer, offset: usize) ?py.Tuple {
     const raw = slice[offset .. offset + 8];
     const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
     const value = mem.readInt(u64, raw_ptr, .little);
-    return tuple2(value, offset + 8);
+    return tuple2(u64, value, usize, offset + 8);
 }
 
 fn makeTag(field_number: u32, wire_type_int: u8) ?u32 {
@@ -277,7 +277,7 @@ fn parseTag(tag: u64) ?py.Tuple {
         }
         return null;
     };
-    return tuple2(parsed.field_number, @intFromEnum(parsed.wire_type));
+    return tuple2(u32, parsed.field_number, u3, @intFromEnum(parsed.wire_type));
 }
 
 fn zigzagEncode(value: i64) u64 {
@@ -368,7 +368,7 @@ fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) ?py.List {
             .sint64 => varintToSint64(value),
             .bool => varintToBool(value),
         };
-        if (!list.append(out)) {
+        if (!list.append(@TypeOf(out), out)) {
             list.deinit();
             return null;
         }
@@ -435,7 +435,7 @@ fn decodePackedFixed32(data: py.Buffer, comptime kind: Fixed32Kind) ?py.List {
             .sfixed32 => fixed32ToSfixed32(value),
             .float => @as(f32, @bitCast(value)),
         };
-        if (!list.set(i, out)) {
+        if (!list.set(@TypeOf(out), i, out)) {
             list.deinit();
             return null;
         }
@@ -486,7 +486,7 @@ fn decodePackedFixed64(data: py.Buffer, comptime kind: Fixed64Kind) ?py.List {
             .sfixed64 => fixed64ToSfixed64(value),
             .double => @as(f64, @bitCast(value)),
         };
-        if (!list.set(i, out)) {
+        if (!list.set(@TypeOf(out), i, out)) {
             list.deinit();
             return null;
         }
