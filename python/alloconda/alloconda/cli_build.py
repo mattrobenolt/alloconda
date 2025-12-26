@@ -55,6 +55,7 @@ def build(
 ) -> None:
     """Build a Zig extension and install it into a package directory."""
     project_root = find_project_dir(package_dir or Path.cwd())
+    build_root = project_root or Path.cwd()
     config = read_tool_alloconda(project_root, package_dir)
 
     module_name = module_name or config_value(config, "module-name")
@@ -88,5 +89,6 @@ def build(
         python_include=python_include,
         no_init=no_init,
         force_init=force_init,
+        workdir=build_root,
     )
     click.echo(f"✓ Built {dst}")
