@@ -141,8 +141,10 @@ fn encodeVarintUnsigned(value: u64) ?py.Bytes {
     return .fromSlice(buf[0..len]);
 }
 
-fn decodeVarint(data: py.Bytes, offset: usize) ?py.Tuple {
-    const slice = data.slice() orelse return null;
+fn decodeVarint(data: py.Buffer, offset: usize) ?py.Tuple {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     if (offset >= slice.len) {
         py.raise(.ValueError, "offset beyond data length");
         return null;
@@ -173,42 +175,44 @@ fn tuple2(first: anytype, second: anytype) ?py.Tuple {
 
 fn encodeFixed32(value: u32) ?py.Bytes {
     var buf: [4]u8 = undefined;
-    mem.writeInt(u32, buf[0..], value, .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(u32, &buf, value, .little);
+    return .fromSlice(&buf);
 }
 
 fn encodeSfixed32(value: i32) ?py.Bytes {
     var buf: [4]u8 = undefined;
-    mem.writeInt(i32, buf[0..], value, .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(i32, &buf, value, .little);
+    return .fromSlice(&buf);
 }
 
 fn encodeFixed64(value: u64) ?py.Bytes {
     var buf: [8]u8 = undefined;
-    mem.writeInt(u64, buf[0..], value, .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(u64, &buf, value, .little);
+    return .fromSlice(&buf);
 }
 
 fn encodeSfixed64(value: i64) ?py.Bytes {
     var buf: [8]u8 = undefined;
-    mem.writeInt(i64, buf[0..], value, .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(i64, &buf, value, .little);
+    return .fromSlice(&buf);
 }
 
 fn encodeFloat(value: f32) ?py.Bytes {
     var buf: [4]u8 = undefined;
-    mem.writeInt(u32, buf[0..], @bitCast(value), .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(u32, &buf, @bitCast(value), .little);
+    return .fromSlice(&buf);
 }
 
 fn encodeDouble(value: f64) ?py.Bytes {
     var buf: [8]u8 = undefined;
-    mem.writeInt(u64, buf[0..], @bitCast(value), .little);
-    return .fromSlice(buf[0..]);
+    mem.writeInt(u64, &buf, @bitCast(value), .little);
+    return .fromSlice(&buf);
 }
 
-fn decodeFixed32(data: py.Bytes, offset: usize) ?py.Tuple {
-    const slice = data.slice() orelse return null;
+fn decodeFixed32(data: py.Buffer, offset: usize) ?py.Tuple {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     if (offset >= slice.len) {
         py.raise(.ValueError, "offset beyond data length");
         return null;
@@ -223,8 +227,10 @@ fn decodeFixed32(data: py.Bytes, offset: usize) ?py.Tuple {
     return tuple2(value, offset + 4);
 }
 
-fn decodeFixed64(data: py.Bytes, offset: usize) ?py.Tuple {
-    const slice = data.slice() orelse return null;
+fn decodeFixed64(data: py.Buffer, offset: usize) ?py.Tuple {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     if (offset >= slice.len) {
         py.raise(.ValueError, "offset beyond data length");
         return null;
@@ -329,8 +335,10 @@ const VarintKind = enum {
     bool,
 };
 
-fn decodePackedVarints(data: py.Bytes, comptime kind: VarintKind) ?py.List {
-    const slice = data.slice() orelse return null;
+fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) ?py.List {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     var list = py.List.init(0) orelse return null;
     var offset: usize = 0;
     while (offset < slice.len) {
@@ -361,31 +369,31 @@ fn decodePackedVarints(data: py.Bytes, comptime kind: VarintKind) ?py.List {
     return list;
 }
 
-fn decodePackedInt32s(data: py.Bytes) ?py.List {
+fn decodePackedInt32s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .int32);
 }
 
-fn decodePackedInt64s(data: py.Bytes) ?py.List {
+fn decodePackedInt64s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .int64);
 }
 
-fn decodePackedUint32s(data: py.Bytes) ?py.List {
+fn decodePackedUint32s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .uint32);
 }
 
-fn decodePackedUint64s(data: py.Bytes) ?py.List {
+fn decodePackedUint64s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .uint64);
 }
 
-fn decodePackedSint32s(data: py.Bytes) ?py.List {
+fn decodePackedSint32s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .sint32);
 }
 
-fn decodePackedSint64s(data: py.Bytes) ?py.List {
+fn decodePackedSint64s(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .sint64);
 }
 
-fn decodePackedBools(data: py.Bytes) ?py.List {
+fn decodePackedBools(data: py.Buffer) ?py.List {
     return decodePackedVarints(data, .bool);
 }
 
@@ -395,8 +403,10 @@ const Fixed32Kind = enum {
     float,
 };
 
-fn decodePackedFixed32(data: py.Bytes, comptime kind: Fixed32Kind) ?py.List {
-    const slice = data.slice() orelse return null;
+fn decodePackedFixed32(data: py.Buffer, comptime kind: Fixed32Kind) ?py.List {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     if (slice.len % 4 != 0) {
         switch (kind) {
             .fixed32 => py.raise(.ValueError, "packed fixed32 data length not a multiple of 4"),
@@ -426,15 +436,15 @@ fn decodePackedFixed32(data: py.Bytes, comptime kind: Fixed32Kind) ?py.List {
     return list;
 }
 
-fn decodePackedFixed32s(data: py.Bytes) ?py.List {
+fn decodePackedFixed32s(data: py.Buffer) ?py.List {
     return decodePackedFixed32(data, .fixed32);
 }
 
-fn decodePackedSfixed32s(data: py.Bytes) ?py.List {
+fn decodePackedSfixed32s(data: py.Buffer) ?py.List {
     return decodePackedFixed32(data, .sfixed32);
 }
 
-fn decodePackedFloats(data: py.Bytes) ?py.List {
+fn decodePackedFloats(data: py.Buffer) ?py.List {
     return decodePackedFixed32(data, .float);
 }
 
@@ -444,8 +454,10 @@ const Fixed64Kind = enum {
     double,
 };
 
-fn decodePackedFixed64(data: py.Bytes, comptime kind: Fixed64Kind) ?py.List {
-    const slice = data.slice() orelse return null;
+fn decodePackedFixed64(data: py.Buffer, comptime kind: Fixed64Kind) ?py.List {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
     if (slice.len % 8 != 0) {
         switch (kind) {
             .fixed64 => py.raise(.ValueError, "packed fixed64 data length not a multiple of 8"),
@@ -475,14 +487,14 @@ fn decodePackedFixed64(data: py.Bytes, comptime kind: Fixed64Kind) ?py.List {
     return list;
 }
 
-fn decodePackedFixed64s(data: py.Bytes) ?py.List {
+fn decodePackedFixed64s(data: py.Buffer) ?py.List {
     return decodePackedFixed64(data, .fixed64);
 }
 
-fn decodePackedSfixed64s(data: py.Bytes) ?py.List {
+fn decodePackedSfixed64s(data: py.Buffer) ?py.List {
     return decodePackedFixed64(data, .sfixed64);
 }
 
-fn decodePackedDoubles(data: py.Bytes) ?py.List {
+fn decodePackedDoubles(data: py.Buffer) ?py.List {
     return decodePackedFixed64(data, .double);
 }

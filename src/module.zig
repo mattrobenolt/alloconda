@@ -97,7 +97,7 @@ pub const Module = struct {
     pub fn withTypes(comptime self: Module, comptime types: anytype) Module {
         const defs = comptime buildClassDefs(self.name, types);
         var next = self;
-        next.types = defs[0..];
+        next.types = &defs;
         return next;
     }
 

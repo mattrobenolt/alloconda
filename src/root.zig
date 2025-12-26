@@ -26,6 +26,7 @@ pub const module = module_mod.module;
 const types = @import("types.zig");
 pub const Object = types.Object;
 pub const Bytes = types.Bytes;
+pub const Buffer = types.Buffer;
 pub const List = types.List;
 pub const Dict = types.Dict;
 pub const Tuple = types.Tuple;

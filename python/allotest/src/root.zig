@@ -31,6 +31,8 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .bytes_len = py.method(bytes_len, .{ .doc = "Return length of bytes" }),
     .bytes_slice = py.method(bytes_slice, .{ .doc = "Return slice of bytes as new bytes" }),
     .bytes_create = py.method(bytes_create, .{ .doc = "Create bytes from string" }),
+    .buffer_len = py.method(buffer_len, .{ .doc = "Return length of buffer" }),
+    .buffer_sum = py.method(buffer_sum, .{ .doc = "Return sum of buffer bytes" }),
 
     // List operations
     .list_len = py.method(list_len, .{ .doc = "Return length of list" }),
@@ -167,6 +169,23 @@ fn bytes_slice(data: py.Bytes, start: i64, end: i64) CallError!py.Bytes {
 
 fn bytes_create(value: []const u8) CallError!py.Bytes {
     return py.Bytes.fromSlice(value) orelse error.PythonError;
+}
+
+fn buffer_len(data: py.Buffer) CallError!usize {
+    var buffer = data;
+    defer buffer.release();
+    return buffer.len();
+}
+
+fn buffer_sum(data: py.Buffer) CallError!u64 {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
+    var total: u64 = 0;
+    for (slice) |byte| {
+        total += byte;
+    }
+    return total;
 }
 
 // ============================================================================

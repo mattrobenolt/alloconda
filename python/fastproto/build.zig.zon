@@ -6,7 +6,7 @@
     .dependencies = .{
         .alloconda = .{
             .url = "../../",
-            .hash = "alloconda-0.0.0-tRxrxtY_AQA5EWU6rVQDOuAZdZg5BAze4XaxdgKwSgU_",
+            .hash = "alloconda-0.0.0-tRxrxhJEAQCJ2xSxplnpJIPc_qaXcDuZ4NOzr2W22hRI",
         },
     },
     .paths = .{

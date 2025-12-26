@@ -147,31 +147,29 @@ def encode_fixed64(value: int) -> bytes:
     return _native_encode_fixed64(value & 0xFFFFFFFFFFFFFFFF)
 
 
-def decode_varint(data: bytes | memoryview, offset: int = 0) -> tuple[int, int]:
+def decode_varint(
+    data: bytes | bytearray | memoryview, offset: int = 0
+) -> tuple[int, int]:
     """Decode a varint from data at the given offset."""
-    if isinstance(data, memoryview):
-        data = bytes(data)
     return _native_decode_varint(data, offset)
 
 
-def decode_fixed32(data: bytes | memoryview, offset: int = 0) -> tuple[int, int]:
+def decode_fixed32(
+    data: bytes | bytearray | memoryview, offset: int = 0
+) -> tuple[int, int]:
     """Decode a fixed32 from data at the given offset."""
-    if isinstance(data, memoryview):
-        data = bytes(data)
     return _native_decode_fixed32(data, offset)
 
 
-def decode_fixed64(data: bytes | memoryview, offset: int = 0) -> tuple[int, int]:
+def decode_fixed64(
+    data: bytes | bytearray | memoryview, offset: int = 0
+) -> tuple[int, int]:
     """Decode a fixed64 from data at the given offset."""
-    if isinstance(data, memoryview):
-        data = bytes(data)
     return _native_decode_fixed64(data, offset)
 
 
-def iter_varints(data: bytes | memoryview) -> Iterator[int]:
+def iter_varints(data: bytes | bytearray | memoryview) -> Iterator[int]:
     """Iterate over varints in a packed repeated field."""
-    if isinstance(data, memoryview):
-        data = bytes(data)
     offset = 0
     while offset < len(data):
         value, offset = decode_varint(data, offset)
@@ -322,80 +320,67 @@ class Field:
     def packed_int32s(self) -> list[int]:
         """Read as packed repeated int32."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_int32s(data)
+        return _native_decode_packed_int32s(self._data)
 
     def packed_int64s(self) -> list[int]:
         """Read as packed repeated int64."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_int64s(data)
+        return _native_decode_packed_int64s(self._data)
 
     def packed_uint32s(self) -> list[int]:
         """Read as packed repeated uint32."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_uint32s(data)
+        return _native_decode_packed_uint32s(self._data)
 
     def packed_uint64s(self) -> list[int]:
         """Read as packed repeated uint64."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_uint64s(data)
+        return _native_decode_packed_uint64s(self._data)
 
     def packed_sint32s(self) -> list[int]:
         """Read as packed repeated sint32."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_sint32s(data)
+        return _native_decode_packed_sint32s(self._data)
 
     def packed_sint64s(self) -> list[int]:
         """Read as packed repeated sint64."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_sint64s(data)
+        return _native_decode_packed_sint64s(self._data)
 
     def packed_bools(self) -> list[builtins.bool]:
         """Read as packed repeated bool."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_bools(data)
+        return _native_decode_packed_bools(self._data)
 
     def packed_fixed32s(self) -> list[int]:
         """Read as packed repeated fixed32."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_fixed32s(data)
+        return _native_decode_packed_fixed32s(self._data)
 
     def packed_sfixed32s(self) -> list[int]:
         """Read as packed repeated sfixed32."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_sfixed32s(data)
+        return _native_decode_packed_sfixed32s(self._data)
 
     def packed_floats(self) -> list[builtins.float]:
         """Read as packed repeated float."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_floats(data)
+        return _native_decode_packed_floats(self._data)
 
     def packed_fixed64s(self) -> list[int]:
         """Read as packed repeated fixed64."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_fixed64s(data)
+        return _native_decode_packed_fixed64s(self._data)
 
     def packed_sfixed64s(self) -> list[int]:
         """Read as packed repeated sfixed64."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_sfixed64s(data)
+        return _native_decode_packed_sfixed64s(self._data)
 
     def packed_doubles(self) -> list[builtins.float]:
         """Read as packed repeated double."""
         self._require_wire_type(WireType.LEN)
-        data = self._data if isinstance(self._data, bytes) else bytes(self._data)
-        return _native_decode_packed_doubles(data)
+        return _native_decode_packed_doubles(self._data)
 
 
 # === Reader class ===

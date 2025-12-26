@@ -256,6 +256,36 @@ pub const Bytes = struct {
     }
 };
 
+/// Wrapper for Python buffer protocol.
+pub const Buffer = struct {
+    view: c.Py_buffer,
+
+    /// Request a buffer view (read-only).
+    pub fn init(obj: Object) ?Buffer {
+        var view: c.Py_buffer = undefined;
+        if (c.PyObject_GetBuffer(obj.ptr, &view, c.PyBUF_SIMPLE) != 0) {
+            return null;
+        }
+        return .{ .view = view };
+    }
+
+    /// Release the buffer view.
+    pub fn release(self: *Buffer) void {
+        c.PyBuffer_Release(&self.view);
+    }
+
+    /// Return the byte length.
+    pub fn len(self: *const Buffer) usize {
+        return @intCast(self.view.len);
+    }
+
+    /// Borrow the underlying bytes as a slice.
+    pub fn slice(self: *const Buffer) []const u8 {
+        const ptr: [*]const u8 = @ptrCast(self.view.buf);
+        return ptr[0..self.len()];
+    }
+};
+
 /// Wrapper for Python list objects.
 pub const List = struct {
     obj: Object,
@@ -352,7 +382,7 @@ pub const Dict = struct {
         if (item == null) {
             return null;
         }
-        return Object.borrowed(item);
+        return .borrowed(item);
     }
 
     /// Set a key to a value.
@@ -748,6 +778,13 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
                 return null;
             }
             return Bytes.borrowed(ptr);
+        },
+        Buffer => {
+            if (c.PyObject_CheckBuffer(ptr) == 0) {
+                raise(.TypeError, "expected buffer");
+                return null;
+            }
+            return Buffer.init(Object.borrowed(ptr)) orelse return null;
         },
         List => {
             if (c.PyList_Check(ptr) == 0) {

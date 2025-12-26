@@ -43,6 +43,7 @@ lint-all:
     cd python/allotest && just lint
     cd python/zigzon && just lint
     cd python/wheeltest && just lint
+    cd python/fastproto && just fmt
 
 fmt-all:
     just fmt
@@ -50,6 +51,13 @@ fmt-all:
     cd python/allotest && just fmt
     cd python/zigzon && just fmt
     cd python/wheeltest && just fmt
+    cd python/fastproto && just fmt
+
+test-all:
+    cd python/alloconda && just test
+    cd python/allotest && just build test
+    cd python/zigzon && just build test
+    cd python/fastproto && just build test
 
 docs:
     zig build docs -p docs {{ python_include }}

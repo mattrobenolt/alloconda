@@ -1,4 +1,4 @@
-"""Tests for List, Dict, Tuple, and Bytes operations."""
+"""Tests for List, Dict, Tuple, Bytes, and Buffer operations."""
 
 import pytest
 
@@ -36,6 +36,25 @@ class TestBytes:
         assert allotest.bytes_create("hello") == b"hello"
         assert allotest.bytes_create("") == b""
         assert allotest.bytes_create("unicode: \u00e9") == b"unicode: \xc3\xa9"
+
+
+class TestBuffer:
+    """Test buffer protocol operations."""
+
+    def test_buffer_len(self) -> None:
+        assert allotest.buffer_len(b"hello") == 5
+        assert allotest.buffer_len(bytearray(b"hello")) == 5
+        assert allotest.buffer_len(memoryview(b"hello")) == 5
+        assert allotest.buffer_len(memoryview(b"hello")[1:4]) == 3
+
+    def test_buffer_sum(self) -> None:
+        assert allotest.buffer_sum(b"\x01\x02\x03") == 6
+        assert allotest.buffer_sum(bytearray(b"\x01\x02\x03")) == 6
+        assert allotest.buffer_sum(memoryview(b"\x01\x02\x03")) == 6
+
+    def test_buffer_type_error(self) -> None:
+        with pytest.raises(TypeError):
+            allotest.buffer_len("not-bytes")  # type: ignore[arg-type]
 
 
 class TestList:

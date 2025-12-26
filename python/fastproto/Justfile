@@ -9,6 +9,9 @@ lint:
     ruff check
     ty check
 
+build:
+    alloconda build
+
 test:
     pytest -v tests/
 
