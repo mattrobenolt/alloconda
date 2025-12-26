@@ -5,7 +5,7 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .alloconda = .{
-            .url = "git+https://github.com/mattrobenolt/alloconda?ref=main#bd8735e63256b1e9a932e68817a028c9330fa441",
+            .url = "../../",
             .hash = "alloconda-0.0.0-tRxrxtY_AQA5EWU6rVQDOuAZdZg5BAze4XaxdgKwSgU_",
         },
     },

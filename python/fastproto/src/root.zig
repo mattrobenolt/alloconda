@@ -61,6 +61,72 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
     .double_from_bits = py.method(doubleFromBits, .{
         .doc = "Interpret u64 bits as double.",
     }),
+    .varint_to_int32 = py.method(varintToInt32, .{
+        .doc = "Interpret an unsigned varint as int32.",
+    }),
+    .varint_to_int64 = py.method(varintToInt64, .{
+        .doc = "Interpret an unsigned varint as int64.",
+    }),
+    .varint_to_uint32 = py.method(varintToUint32, .{
+        .doc = "Interpret an unsigned varint as uint32.",
+    }),
+    .varint_to_uint64 = py.method(varintToUint64, .{
+        .doc = "Interpret an unsigned varint as uint64.",
+    }),
+    .varint_to_sint32 = py.method(varintToSint32, .{
+        .doc = "Interpret an unsigned varint as sint32 (zigzag).",
+    }),
+    .varint_to_sint64 = py.method(varintToSint64, .{
+        .doc = "Interpret an unsigned varint as sint64 (zigzag).",
+    }),
+    .varint_to_bool = py.method(varintToBool, .{
+        .doc = "Interpret an unsigned varint as bool.",
+    }),
+    .fixed32_to_sfixed32 = py.method(fixed32ToSfixed32, .{
+        .doc = "Interpret a fixed32 value as sfixed32.",
+    }),
+    .fixed64_to_sfixed64 = py.method(fixed64ToSfixed64, .{
+        .doc = "Interpret a fixed64 value as sfixed64.",
+    }),
+    .decode_packed_int32s = py.method(decodePackedInt32s, .{
+        .doc = "Decode packed varints as int32 list.",
+    }),
+    .decode_packed_int64s = py.method(decodePackedInt64s, .{
+        .doc = "Decode packed varints as int64 list.",
+    }),
+    .decode_packed_uint32s = py.method(decodePackedUint32s, .{
+        .doc = "Decode packed varints as uint32 list.",
+    }),
+    .decode_packed_uint64s = py.method(decodePackedUint64s, .{
+        .doc = "Decode packed varints as uint64 list.",
+    }),
+    .decode_packed_sint32s = py.method(decodePackedSint32s, .{
+        .doc = "Decode packed varints as sint32 list.",
+    }),
+    .decode_packed_sint64s = py.method(decodePackedSint64s, .{
+        .doc = "Decode packed varints as sint64 list.",
+    }),
+    .decode_packed_bools = py.method(decodePackedBools, .{
+        .doc = "Decode packed varints as bool list.",
+    }),
+    .decode_packed_fixed32s = py.method(decodePackedFixed32s, .{
+        .doc = "Decode packed fixed32 values.",
+    }),
+    .decode_packed_sfixed32s = py.method(decodePackedSfixed32s, .{
+        .doc = "Decode packed sfixed32 values.",
+    }),
+    .decode_packed_floats = py.method(decodePackedFloats, .{
+        .doc = "Decode packed float values.",
+    }),
+    .decode_packed_fixed64s = py.method(decodePackedFixed64s, .{
+        .doc = "Decode packed fixed64 values.",
+    }),
+    .decode_packed_sfixed64s = py.method(decodePackedSfixed64s, .{
+        .doc = "Decode packed sfixed64 values.",
+    }),
+    .decode_packed_doubles = py.method(decodePackedDoubles, .{
+        .doc = "Decode packed double values.",
+    }),
 });
 
 fn encodeVarint(value: i64) ?py.Bytes {
@@ -215,4 +281,208 @@ fn floatFromBits(value: u32) f32 {
 
 fn doubleFromBits(value: u64) f64 {
     return @bitCast(value);
+}
+
+fn varintToInt32(value: u64) i32 {
+    return @bitCast(@as(u32, @truncate(value)));
+}
+
+fn varintToInt64(value: u64) i64 {
+    return @bitCast(value);
+}
+
+fn varintToUint32(value: u64) u32 {
+    return @truncate(value);
+}
+
+fn varintToUint64(value: u64) u64 {
+    return value;
+}
+
+fn varintToSint32(value: u64) i32 {
+    return wire.zigzagDecode(u32, @truncate(value));
+}
+
+fn varintToSint64(value: u64) i64 {
+    return wire.zigzagDecode(u64, value);
+}
+
+fn varintToBool(value: u64) bool {
+    return value != 0;
+}
+
+fn fixed32ToSfixed32(value: u32) i32 {
+    return @bitCast(value);
+}
+
+fn fixed64ToSfixed64(value: u64) i64 {
+    return @bitCast(value);
+}
+
+const VarintKind = enum {
+    int32,
+    int64,
+    uint32,
+    uint64,
+    sint32,
+    sint64,
+    bool,
+};
+
+fn decodePackedVarints(data: py.Bytes, comptime kind: VarintKind) ?py.List {
+    const slice = data.slice() orelse return null;
+    var list = py.List.init(0) orelse return null;
+    var offset: usize = 0;
+    while (offset < slice.len) {
+        const value, const bytes_read = wire.decodeVarint(u64, slice[offset..]) catch |err| {
+            list.deinit();
+            switch (err) {
+                wire.Error.Truncated => py.raise(.ValueError, "truncated varint"),
+                wire.Error.VarintTooLong => py.raise(.ValueError, "varint too long"),
+                else => py.raise(.ValueError, "decode error"),
+            }
+            return null;
+        };
+        offset += bytes_read;
+        const out = switch (kind) {
+            .int32 => varintToInt32(value),
+            .int64 => varintToInt64(value),
+            .uint32 => varintToUint32(value),
+            .uint64 => varintToUint64(value),
+            .sint32 => varintToSint32(value),
+            .sint64 => varintToSint64(value),
+            .bool => varintToBool(value),
+        };
+        if (!list.append(out)) {
+            list.deinit();
+            return null;
+        }
+    }
+    return list;
+}
+
+fn decodePackedInt32s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .int32);
+}
+
+fn decodePackedInt64s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .int64);
+}
+
+fn decodePackedUint32s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .uint32);
+}
+
+fn decodePackedUint64s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .uint64);
+}
+
+fn decodePackedSint32s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .sint32);
+}
+
+fn decodePackedSint64s(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .sint64);
+}
+
+fn decodePackedBools(data: py.Bytes) ?py.List {
+    return decodePackedVarints(data, .bool);
+}
+
+const Fixed32Kind = enum {
+    fixed32,
+    sfixed32,
+    float,
+};
+
+fn decodePackedFixed32(data: py.Bytes, comptime kind: Fixed32Kind) ?py.List {
+    const slice = data.slice() orelse return null;
+    if (slice.len % 4 != 0) {
+        switch (kind) {
+            .fixed32 => py.raise(.ValueError, "packed fixed32 data length not a multiple of 4"),
+            .sfixed32 => py.raise(.ValueError, "packed sfixed32 data length not a multiple of 4"),
+            .float => py.raise(.ValueError, "packed float data length not a multiple of 4"),
+        }
+        return null;
+    }
+    const count = slice.len / 4;
+    var list = py.List.init(count) orelse return null;
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const start = i * 4;
+        const raw = slice[start .. start + 4];
+        const raw_ptr: *const [4]u8 = @ptrCast(raw.ptr);
+        const value = mem.readInt(u32, raw_ptr, .little);
+        const out = switch (kind) {
+            .fixed32 => value,
+            .sfixed32 => fixed32ToSfixed32(value),
+            .float => @as(f32, @bitCast(value)),
+        };
+        if (!list.set(i, out)) {
+            list.deinit();
+            return null;
+        }
+    }
+    return list;
+}
+
+fn decodePackedFixed32s(data: py.Bytes) ?py.List {
+    return decodePackedFixed32(data, .fixed32);
+}
+
+fn decodePackedSfixed32s(data: py.Bytes) ?py.List {
+    return decodePackedFixed32(data, .sfixed32);
+}
+
+fn decodePackedFloats(data: py.Bytes) ?py.List {
+    return decodePackedFixed32(data, .float);
+}
+
+const Fixed64Kind = enum {
+    fixed64,
+    sfixed64,
+    double,
+};
+
+fn decodePackedFixed64(data: py.Bytes, comptime kind: Fixed64Kind) ?py.List {
+    const slice = data.slice() orelse return null;
+    if (slice.len % 8 != 0) {
+        switch (kind) {
+            .fixed64 => py.raise(.ValueError, "packed fixed64 data length not a multiple of 8"),
+            .sfixed64 => py.raise(.ValueError, "packed sfixed64 data length not a multiple of 8"),
+            .double => py.raise(.ValueError, "packed double data length not a multiple of 8"),
+        }
+        return null;
+    }
+    const count = slice.len / 8;
+    var list = py.List.init(count) orelse return null;
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const start = i * 8;
+        const raw = slice[start .. start + 8];
+        const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
+        const value = mem.readInt(u64, raw_ptr, .little);
+        const out = switch (kind) {
+            .fixed64 => value,
+            .sfixed64 => fixed64ToSfixed64(value),
+            .double => @as(f64, @bitCast(value)),
+        };
+        if (!list.set(i, out)) {
+            list.deinit();
+            return null;
+        }
+    }
+    return list;
+}
+
+fn decodePackedFixed64s(data: py.Bytes) ?py.List {
+    return decodePackedFixed64(data, .fixed64);
+}
+
+fn decodePackedSfixed64s(data: py.Bytes) ?py.List {
+    return decodePackedFixed64(data, .sfixed64);
+}
+
+fn decodePackedDoubles(data: py.Bytes) ?py.List {
+    return decodePackedFixed64(data, .double);
 }
