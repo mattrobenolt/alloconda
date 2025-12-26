@@ -14,7 +14,7 @@ members = [
 
 [[package]]
 name = "alloconda"
-version = "0.0.1a7"
+version = "0.0.1a8"
 source = { editable = "python/alloconda" }
 dependencies = [
     { name = "click" },
