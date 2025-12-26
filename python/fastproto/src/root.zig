@@ -129,9 +129,13 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
     }),
 });
 
-fn encodeVarint(value: i64) ?py.Bytes {
+fn encodeVarint(value: py.Object) ?py.Bytes {
+    const parsed = py.longAsLong(value.ptr) orelse return null;
     var buf: [wire.max_varint_len]u8 = undefined;
-    const len = wire.encodeVarint(i64, value, &buf) catch return null;
+    const len = switch (parsed) {
+        .signed => |signed| wire.encodeVarint(i64, signed, &buf) catch return null,
+        .unsigned => |unsigned| wire.encodeVarint(u64, unsigned, &buf) catch return null,
+    };
     return .fromSlice(buf[0..len]);
 }
 
@@ -173,9 +177,11 @@ fn tuple2(first: anytype, second: anytype) ?py.Tuple {
     return result;
 }
 
-fn encodeFixed32(value: u32) ?py.Bytes {
+fn encodeFixed32(value: py.Object) ?py.Bytes {
+    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
+    const cast_value: u32 = @truncate(masked);
     var buf: [4]u8 = undefined;
-    mem.writeInt(u32, &buf, value, .little);
+    mem.writeInt(u32, &buf, cast_value, .little);
     return .fromSlice(&buf);
 }
 
@@ -185,9 +191,10 @@ fn encodeSfixed32(value: i32) ?py.Bytes {
     return .fromSlice(&buf);
 }
 
-fn encodeFixed64(value: u64) ?py.Bytes {
+fn encodeFixed64(value: py.Object) ?py.Bytes {
+    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
     var buf: [8]u8 = undefined;
-    mem.writeInt(u64, &buf, value, .little);
+    mem.writeInt(u64, &buf, masked, .little);
     return .fromSlice(&buf);
 }
 

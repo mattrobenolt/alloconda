@@ -10,6 +10,7 @@ lint:
     ty check
 
 build:
+    zig fetch --save ../../
     alloconda build
 
 test:

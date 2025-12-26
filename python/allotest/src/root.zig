@@ -26,6 +26,12 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .identity_bytes = py.method(identity_bytes, .{ .doc = "Return bytes unchanged" }),
     .identity_optional = py.method(identity_optional, .{ .doc = "Return optional string or None" }),
     .identity_object = py.method(identity_object, .{ .doc = "Return any object unchanged" }),
+    .int64_or_uint64 = py.method(int64_or_uint64, .{ .doc = "Parse int as signed/unsigned 64-bit" }),
+    .mask_u32 = py.method(mask_u32, .{ .doc = "Mask int to u32" }),
+    .mask_u64 = py.method(mask_u64, .{ .doc = "Mask int to u64" }),
+    .bigint_to_string = py.method(bigint_to_string, .{ .doc = "Convert bigint to decimal string" }),
+    .bigint_roundtrip = py.method(bigint_roundtrip, .{ .doc = "Roundtrip bigint through py.BigInt" }),
+    .int_roundtrip = py.method(int_roundtrip, .{ .doc = "Roundtrip int through py.Int" }),
 
     // Bytes operations
     .bytes_len = py.method(bytes_len, .{ .doc = "Return length of bytes" }),
@@ -144,6 +150,66 @@ fn identity_optional(x: ?[]const u8) ?[]const u8 {
 
 fn identity_object(x: py.Object) py.Object {
     return x.incref();
+}
+
+fn int64_or_uint64(value: py.Object) ?py.Tuple {
+    const parsed = py.longAsLong(value.ptr) orelse return null;
+    var result = py.Tuple.init(2) orelse return null;
+    const is_signed = switch (parsed) {
+        .signed => true,
+        .unsigned => false,
+    };
+    if (!result.set(0, is_signed)) {
+        result.deinit();
+        return null;
+    }
+    switch (parsed) {
+        .signed => |v| {
+            if (!result.set(1, v)) {
+                result.deinit();
+                return null;
+            }
+        },
+        .unsigned => |v| {
+            if (!result.set(1, v)) {
+                result.deinit();
+                return null;
+            }
+        },
+    }
+    return result;
+}
+
+fn mask_u32(value: py.Object) ?u32 {
+    const masked = py.longAsUnsignedMask(value.ptr) orelse return null;
+    return @truncate(masked);
+}
+
+fn mask_u64(value: py.Object) ?u64 {
+    return py.longAsUnsignedMask(value.ptr);
+}
+
+fn bigint_to_string(value: py.BigInt) CallError!py.Object {
+    var big = value;
+    defer big.deinit();
+    const text = big.value.toConst().toStringAlloc(py.allocator, 10, .lower) catch {
+        py.raise(.MemoryError, "out of memory");
+        return error.PythonError;
+    };
+    defer py.allocator.free(text);
+    return py.toObject(@as([]const u8, text)) orelse error.PythonError;
+}
+
+fn bigint_roundtrip(value: py.BigInt) CallError!py.Object {
+    var big = value;
+    defer big.deinit();
+    return py.toObject(big) orelse error.PythonError;
+}
+
+fn int_roundtrip(value: py.Int) CallError!py.Object {
+    var int_value = value;
+    defer int_value.deinit();
+    return py.toObject(int_value) orelse error.PythonError;
 }
 
 // ============================================================================

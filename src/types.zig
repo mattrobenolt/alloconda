@@ -3,11 +3,13 @@ const fmt = std.fmt;
 const math = std.math;
 const mem = std.mem;
 const Allocator = mem.Allocator;
+const big_int = math.big.int;
 
 const errors = @import("errors.zig");
 const raise = errors.raise;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
+const allocator = ffi.allocator;
 
 /// Wrapper for a Python object with ownership tracking.
 pub const Object = struct {
@@ -285,6 +287,121 @@ pub const Buffer = struct {
         return ptr[0..self.len()];
     }
 };
+
+/// Wrapper for arbitrary-precision Python integers.
+pub const BigInt = struct {
+    value: big_int.Managed,
+
+    pub fn deinit(self: *BigInt) void {
+        self.value.deinit();
+    }
+};
+
+/// Unified Python int representation: fast 64-bit or allocated bigint.
+pub const Int = union(enum) {
+    small: Long,
+    big: BigInt,
+
+    pub fn deinit(self: *Int) void {
+        switch (self.*) {
+            .big => |*big| big.deinit(),
+            .small => {},
+        }
+    }
+};
+
+/// Result of parsing a Python int into a 64-bit signed/unsigned value.
+pub const Long = union(enum) {
+    signed: i64,
+    unsigned: u64,
+};
+
+/// Convert a Python int into i64 when possible, otherwise u64 if it fits.
+pub fn longAsLong(obj: *c.PyObject) ?Long {
+    var overflow: c_int = 0;
+    const signed_value = c.PyLong_AsLongLongAndOverflow(obj, &overflow);
+    if (c.PyErr_Occurred() != null) return null;
+    if (overflow == 0) {
+        return .{ .signed = @intCast(signed_value) };
+    }
+    if (overflow > 0) {
+        const unsigned_value = c.PyLong_AsUnsignedLongLong(obj);
+        if (c.PyErr_Occurred() != null) return null;
+        return .{ .unsigned = @intCast(unsigned_value) };
+    }
+    raise(.OverflowError, "integer out of range");
+    return null;
+}
+
+/// Convert a Python int to u64 using modulo 2^64 semantics.
+pub fn longAsUnsignedMask(obj: *c.PyObject) ?u64 {
+    const value = c.PyLong_AsUnsignedLongLongMask(obj);
+    if (c.PyErr_Occurred() != null) return null;
+    return @intCast(value);
+}
+
+/// Convert a Python int into Int (64-bit if possible, else bigint).
+pub fn longAsInt(obj: *c.PyObject) ?Int {
+    var overflow: c_int = 0;
+    const signed_value = c.PyLong_AsLongLongAndOverflow(obj, &overflow);
+    if (c.PyErr_Occurred() != null) return null;
+    if (overflow == 0) {
+        return .{ .small = .{ .signed = @intCast(signed_value) } };
+    }
+    if (overflow > 0) {
+        const unsigned_value = c.PyLong_AsUnsignedLongLong(obj);
+        if (c.PyErr_Occurred() != null) {
+            c.PyErr_Clear();
+            const big = bigIntFromLong(obj) orelse return null;
+            return .{ .big = big };
+        }
+        return .{ .small = .{ .unsigned = @intCast(unsigned_value) } };
+    }
+    const big = bigIntFromLong(obj) orelse return null;
+    return .{ .big = big };
+}
+
+fn bigIntFromLong(obj: *c.PyObject) ?BigInt {
+    const text_obj = c.PyObject_Str(obj) orelse return null;
+    defer c.Py_DecRef(text_obj);
+    var len: c.Py_ssize_t = 0;
+    const raw = c.PyUnicode_AsUTF8AndSize(text_obj, &len) orelse return null;
+    const ptr: [*]const u8 = @ptrCast(raw);
+    const text: []const u8 = ptr[0..@intCast(len)];
+    var managed = big_int.Managed.init(allocator) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    errdefer managed.deinit();
+    managed.setString(10, text) catch |err| {
+        switch (err) {
+            error.OutOfMemory => {
+                raise(.MemoryError, "out of memory");
+            },
+            error.InvalidCharacter, error.InvalidBase => {
+                raise(.ValueError, "invalid integer string");
+            },
+        }
+        return null;
+    };
+    return .{ .value = managed };
+}
+
+fn bigIntToPy(value: BigInt) ?*c.PyObject {
+    const text = value.value.toConst().toStringAlloc(allocator, 10, .lower) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    defer allocator.free(text);
+    const buf = allocator.alloc(u8, text.len + 1) catch {
+        raise(.MemoryError, "out of memory");
+        return null;
+    };
+    defer allocator.free(buf);
+    @memcpy(buf[0..text.len], text);
+    buf[text.len] = 0;
+    return c.PyLong_FromString(@ptrCast(buf.ptr), null, 10);
+}
 
 /// Wrapper for Python list objects.
 pub const List = struct {
@@ -769,9 +886,9 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
         return fromPy(Child, ptr);
     }
 
-    switch (T) {
+    return switch (T) {
         // Wrapper types
-        Object => return Object.borrowed(ptr),
+        Object => Object.borrowed(ptr),
         Bytes => {
             if (c.PyBytes_Check(ptr) == 0) {
                 raise(.TypeError, "expected bytes");
@@ -779,12 +896,33 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
             }
             return Bytes.borrowed(ptr);
         },
+        BigInt => {
+            if (c.PyLong_Check(ptr) == 0) {
+                raise(.TypeError, "expected int");
+                return null;
+            }
+            return bigIntFromLong(ptr);
+        },
+        Long => {
+            if (c.PyLong_Check(ptr) == 0) {
+                raise(.TypeError, "expected int");
+                return null;
+            }
+            return longAsLong(ptr);
+        },
+        Int => {
+            if (c.PyLong_Check(ptr) == 0) {
+                raise(.TypeError, "expected int");
+                return null;
+            }
+            return longAsInt(ptr);
+        },
         Buffer => {
             if (c.PyObject_CheckBuffer(ptr) == 0) {
                 raise(.TypeError, "expected buffer");
                 return null;
             }
-            return Buffer.init(Object.borrowed(ptr)) orelse return null;
+            return Buffer.init(.borrowed(ptr)) orelse return null;
         },
         List => {
             if (c.PyList_Check(ptr) == 0) {
@@ -828,21 +966,23 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
         },
         // Numeric types fall through to typeInfo-based handling
         else => switch (@typeInfo(T)) {
-            .int => |int_info| {
-                if (int_info.signedness == .signed) {
+            .int => |info| switch (info.signedness) {
+                .signed => {
                     const value = c.PyLong_AsLongLong(ptr);
                     if (c.PyErr_Occurred() != null) return null;
                     return math.cast(T, value) orelse {
                         raise(.OverflowError, "integer out of range");
                         return null;
                     };
-                }
-                const value = c.PyLong_AsUnsignedLongLong(ptr);
-                if (c.PyErr_Occurred() != null) return null;
-                return math.cast(T, value) orelse {
-                    raise(.OverflowError, "integer out of range");
-                    return null;
-                };
+                },
+                .unsigned => {
+                    const value = c.PyLong_AsUnsignedLongLong(ptr);
+                    if (c.PyErr_Occurred() != null) return null;
+                    return math.cast(T, value) orelse {
+                        raise(.OverflowError, "integer out of range");
+                        return null;
+                    };
+                },
             },
             .float => {
                 const value = c.PyFloat_AsDouble(ptr);
@@ -854,7 +994,7 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) ?T {
                 .{@typeName(T)},
             )),
         },
-    }
+    };
 }
 
 /// Convert a Zig value to a Python object.
@@ -868,9 +1008,9 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
         return c.Py_BuildValue("");
     }
 
-    switch (T) {
+    return switch (T) {
         // Raw PyObject pointers pass through
-        ?*c.PyObject, *c.PyObject => return value,
+        ?*c.PyObject, *c.PyObject => value,
         // Wrapper types - transfer or share ownership appropriately
         Object => {
             if (!value.owns_ref) {
@@ -883,6 +1023,18 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
                 c.Py_IncRef(value.obj.ptr);
             }
             return value.obj.ptr;
+        },
+        BigInt => bigIntToPy(value),
+        Long => switch (value) {
+            .signed => |v| c.PyLong_FromLongLong(@intCast(v)),
+            .unsigned => |v| c.PyLong_FromUnsignedLongLong(@intCast(v)),
+        },
+        Int => switch (value) {
+            .small => |small| switch (small) {
+                .signed => |v| c.PyLong_FromLongLong(@intCast(v)),
+                .unsigned => |v| c.PyLong_FromUnsignedLongLong(@intCast(v)),
+            },
+            .big => |big| bigIntToPy(big),
         },
         List => {
             if (!value.obj.owns_ref) {
@@ -903,18 +1055,14 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
             return value.obj.ptr;
         },
         // String slices
-        []const u8, [:0]const u8 => {
-            return c.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len));
-        },
+        []const u8, [:0]const u8 => c.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len)),
         // Boolean
-        bool => return c.PyBool_FromLong(if (value) 1 else 0),
+        bool => c.PyBool_FromLong(@intFromBool(value)),
         // Numeric types fall through to typeInfo-based handling
         else => switch (@typeInfo(T)) {
-            .int => |int_info| {
-                if (int_info.signedness == .signed) {
-                    return c.PyLong_FromLongLong(@intCast(value));
-                }
-                return c.PyLong_FromUnsignedLongLong(@intCast(value));
+            .int => |info| switch (info.signedness) {
+                .signed => c.PyLong_FromLongLong(@intCast(value)),
+                .unsigned => c.PyLong_FromUnsignedLongLong(@intCast(value)),
             },
             .float => return c.PyFloat_FromDouble(@floatCast(value)),
             else => @compileError(fmt.comptimePrint(
@@ -922,7 +1070,7 @@ pub fn toPy(comptime T: type, value: T) ?*c.PyObject {
                 .{@typeName(T)},
             )),
         },
-    }
+    };
 }
 
 // ============================================================================

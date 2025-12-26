@@ -13,10 +13,19 @@ from collections.abc import Iterator
 
 from fastproto import WireType
 from fastproto._native import (
-    decode_fixed32 as _native_decode_fixed32,
-)
-from fastproto._native import (
-    decode_fixed64 as _native_decode_fixed64,
+    decode_fixed32,
+    decode_fixed64,
+    decode_varint,
+    double_from_bits,
+    encode_double,
+    encode_fixed32,
+    encode_fixed64,
+    encode_float,
+    encode_sfixed32,
+    encode_sfixed64,
+    encode_varint,
+    float_from_bits,
+    zigzag_encode,
 )
 from fastproto._native import (
     decode_packed_bools as _native_decode_packed_bools,
@@ -56,30 +65,6 @@ from fastproto._native import (
 )
 from fastproto._native import (
     decode_packed_uint64s as _native_decode_packed_uint64s,
-)
-from fastproto._native import (
-    decode_varint as _native_decode_varint,
-)
-from fastproto._native import (
-    double_from_bits,
-    encode_double,
-    encode_float,
-    encode_sfixed32,
-    encode_sfixed64,
-    float_from_bits,
-    zigzag_encode,
-)
-from fastproto._native import (
-    encode_fixed32 as _native_encode_fixed32,
-)
-from fastproto._native import (
-    encode_fixed64 as _native_encode_fixed64,
-)
-from fastproto._native import (
-    encode_varint as _native_encode_varint,
-)
-from fastproto._native import (
-    encode_varint_unsigned as _native_encode_varint_unsigned,
 )
 from fastproto._native import (
     fixed32_to_sfixed32 as _native_fixed32_to_sfixed32,
@@ -127,45 +112,6 @@ def parse_tag(tag: int) -> tuple[int, WireType]:
     """Parse a tag into field number and wire type."""
     field_number, wire_type = _native_parse_tag(tag)
     return field_number, WireType(wire_type)
-
-
-def encode_varint(value: int) -> bytes:
-    """Encode an integer as a varint."""
-    # Use unsigned variant for values that don't fit in i64
-    if value >= 0x8000000000000000:  # >= 2^63
-        return _native_encode_varint_unsigned(value)
-    return _native_encode_varint(value)
-
-
-def encode_fixed32(value: int) -> bytes:
-    """Encode a fixed32 value."""
-    return _native_encode_fixed32(value & 0xFFFFFFFF)
-
-
-def encode_fixed64(value: int) -> bytes:
-    """Encode a fixed64 value."""
-    return _native_encode_fixed64(value & 0xFFFFFFFFFFFFFFFF)
-
-
-def decode_varint(
-    data: bytes | bytearray | memoryview, offset: int = 0
-) -> tuple[int, int]:
-    """Decode a varint from data at the given offset."""
-    return _native_decode_varint(data, offset)
-
-
-def decode_fixed32(
-    data: bytes | bytearray | memoryview, offset: int = 0
-) -> tuple[int, int]:
-    """Decode a fixed32 from data at the given offset."""
-    return _native_decode_fixed32(data, offset)
-
-
-def decode_fixed64(
-    data: bytes | bytearray | memoryview, offset: int = 0
-) -> tuple[int, int]:
-    """Decode a fixed64 from data at the given offset."""
-    return _native_decode_fixed64(data, offset)
 
 
 def iter_varints(data: bytes | bytearray | memoryview) -> Iterator[int]:

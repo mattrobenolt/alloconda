@@ -57,6 +57,64 @@ class TestBuffer:
             allotest.buffer_len("not-bytes")  # type: ignore[arg-type]
 
 
+class TestIntConversion:
+    """Test integer conversion helpers."""
+
+    def test_int64_or_uint64_signed(self) -> None:
+        kind, value = allotest.int64_or_uint64(42)
+        assert kind is True
+        assert value == 42
+        kind, value = allotest.int64_or_uint64(-1)
+        assert kind is True
+        assert value == -1
+
+    def test_int64_or_uint64_unsigned(self) -> None:
+        value = 2**63
+        kind, out = allotest.int64_or_uint64(value)
+        assert kind is False
+        assert out == value
+
+    def test_int64_or_uint64_overflow(self) -> None:
+        with pytest.raises(OverflowError):
+            allotest.int64_or_uint64(2**64)
+        with pytest.raises(OverflowError):
+            allotest.int64_or_uint64(-(2**63) - 1)
+
+    def test_int64_or_uint64_type_error(self) -> None:
+        with pytest.raises(TypeError):
+            allotest.int64_or_uint64("not-int")  # type: ignore[arg-type]
+
+    def test_mask_u32(self) -> None:
+        assert allotest.mask_u32(0xFFFFFFFF) == 0xFFFFFFFF
+        assert allotest.mask_u32(0x1_0000_0000) == 0
+        assert allotest.mask_u32(-1) == 0xFFFFFFFF
+
+    def test_mask_u64(self) -> None:
+        assert allotest.mask_u64(0xFFFFFFFFFFFFFFFF) == 0xFFFFFFFFFFFFFFFF
+        assert allotest.mask_u64(0x1_0000_0000_0000_0000) == 0
+        assert allotest.mask_u64(-1) == 0xFFFFFFFFFFFFFFFF
+
+    def test_bigint_to_string(self) -> None:
+        value = 2**200
+        assert allotest.bigint_to_string(value) == str(value)
+        negative = -(2**200) + 123
+        assert allotest.bigint_to_string(negative) == str(negative)
+
+    def test_bigint_roundtrip(self) -> None:
+        value = 2**200
+        assert allotest.bigint_roundtrip(value) == value
+        negative = -(2**200) + 123
+        assert allotest.bigint_roundtrip(negative) == negative
+
+    def test_int_roundtrip(self) -> None:
+        assert allotest.int_roundtrip(123) == 123
+        assert allotest.int_roundtrip(-456) == -456
+        value = 2**200
+        assert allotest.int_roundtrip(value) == value
+        negative = -(2**200) + 123
+        assert allotest.int_roundtrip(negative) == negative
+
+
 class TestList:
     """Test list operations."""
 
