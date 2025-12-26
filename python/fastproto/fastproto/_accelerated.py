@@ -11,10 +11,28 @@ import builtins
 import struct
 from collections.abc import Iterator
 
+try:
+    from collections.abc import Buffer  # type: ignore[unresolved-import]
+except ImportError:
+    Buffer = bytes | bytearray | memoryview
+
 from fastproto import WireType
 from fastproto._native import (
     decode_fixed32,
     decode_fixed64,
+    decode_packed_bools,
+    decode_packed_doubles,
+    decode_packed_fixed32s,
+    decode_packed_fixed64s,
+    decode_packed_floats,
+    decode_packed_int32s,
+    decode_packed_int64s,
+    decode_packed_sfixed32s,
+    decode_packed_sfixed64s,
+    decode_packed_sint32s,
+    decode_packed_sint64s,
+    decode_packed_uint32s,
+    decode_packed_uint64s,
     decode_varint,
     double_from_bits,
     encode_double,
@@ -24,105 +42,21 @@ from fastproto._native import (
     encode_sfixed32,
     encode_sfixed64,
     encode_varint,
+    fixed32_to_sfixed32,
+    fixed64_to_sfixed64,
     float_from_bits,
+    make_tag,
+    parse_tag,
+    skip_field,
+    varint_to_bool,
+    varint_to_int32,
+    varint_to_int64,
+    varint_to_sint32,
+    varint_to_sint64,
+    varint_to_uint32,
+    varint_to_uint64,
     zigzag_encode,
 )
-from fastproto._native import (
-    decode_packed_bools as _native_decode_packed_bools,
-)
-from fastproto._native import (
-    decode_packed_doubles as _native_decode_packed_doubles,
-)
-from fastproto._native import (
-    decode_packed_fixed32s as _native_decode_packed_fixed32s,
-)
-from fastproto._native import (
-    decode_packed_fixed64s as _native_decode_packed_fixed64s,
-)
-from fastproto._native import (
-    decode_packed_floats as _native_decode_packed_floats,
-)
-from fastproto._native import (
-    decode_packed_int32s as _native_decode_packed_int32s,
-)
-from fastproto._native import (
-    decode_packed_int64s as _native_decode_packed_int64s,
-)
-from fastproto._native import (
-    decode_packed_sfixed32s as _native_decode_packed_sfixed32s,
-)
-from fastproto._native import (
-    decode_packed_sfixed64s as _native_decode_packed_sfixed64s,
-)
-from fastproto._native import (
-    decode_packed_sint32s as _native_decode_packed_sint32s,
-)
-from fastproto._native import (
-    decode_packed_sint64s as _native_decode_packed_sint64s,
-)
-from fastproto._native import (
-    decode_packed_uint32s as _native_decode_packed_uint32s,
-)
-from fastproto._native import (
-    decode_packed_uint64s as _native_decode_packed_uint64s,
-)
-from fastproto._native import (
-    fixed32_to_sfixed32 as _native_fixed32_to_sfixed32,
-)
-from fastproto._native import (
-    fixed64_to_sfixed64 as _native_fixed64_to_sfixed64,
-)
-from fastproto._native import (
-    make_tag as _native_make_tag,
-)
-from fastproto._native import (
-    parse_tag as _native_parse_tag,
-)
-from fastproto._native import (
-    varint_to_bool as _native_varint_to_bool,
-)
-from fastproto._native import (
-    varint_to_int32 as _native_varint_to_int32,
-)
-from fastproto._native import (
-    varint_to_int64 as _native_varint_to_int64,
-)
-from fastproto._native import (
-    varint_to_sint32 as _native_varint_to_sint32,
-)
-from fastproto._native import (
-    varint_to_sint64 as _native_varint_to_sint64,
-)
-from fastproto._native import (
-    varint_to_uint32 as _native_varint_to_uint32,
-)
-from fastproto._native import (
-    varint_to_uint64 as _native_varint_to_uint64,
-)
-
-# === Native-accelerated primitive functions ===
-
-
-def make_tag(field_number: int, wire_type: WireType) -> int:
-    """Create a tag from field number and wire type."""
-    return _native_make_tag(field_number, int(wire_type))
-
-
-def parse_tag(tag: int) -> tuple[int, WireType]:
-    """Parse a tag into field number and wire type."""
-    field_number, wire_type = _native_parse_tag(tag)
-    return field_number, WireType(wire_type)
-
-
-def iter_varints(data: bytes | bytearray | memoryview) -> Iterator[int]:
-    """Iterate over varints in a packed repeated field."""
-    offset = 0
-    while offset < len(data):
-        value, offset = decode_varint(data, offset)
-        yield value
-
-
-# === Field class ===
 
 
 class Field:
@@ -134,7 +68,7 @@ class Field:
         self,
         number: int,
         wire_type: WireType,
-        data: bytes | memoryview,
+        data: Buffer,
         value: int | None = None,
     ) -> None:
         self.number = number
@@ -148,55 +82,51 @@ class Field:
                 f"wire type mismatch: expected {expected.name}, got {self.wire_type.name}"
             )
 
-    # === Varint types ===
-
     def int32(self) -> int:
         """Read as int32 (may be negative via sign extension)."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_int32(self._value)
+        return varint_to_int32(self._value)
 
     def int64(self) -> int:
         """Read as int64 (may be negative via sign extension)."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_int64(self._value)
+        return varint_to_int64(self._value)
 
     def uint32(self) -> int:
         """Read as uint32."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_uint32(self._value)
+        return varint_to_uint32(self._value)
 
     def uint64(self) -> int:
         """Read as uint64."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_uint64(self._value)
+        return varint_to_uint64(self._value)
 
     def sint32(self) -> int:
         """Read as sint32 (ZigZag encoded)."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_sint32(self._value)
+        return varint_to_sint32(self._value)
 
     def sint64(self) -> int:
         """Read as sint64 (ZigZag encoded)."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_sint64(self._value)
+        return varint_to_sint64(self._value)
 
     def bool(self) -> bool:
         """Read as bool."""
         self._require_wire_type(WireType.VARINT)
         assert self._value is not None
-        return _native_varint_to_bool(self._value)
+        return varint_to_bool(self._value)
 
     def enum(self) -> int:
         """Read as enum (same as int32)."""
         return self.int32()
-
-    # === Fixed 64-bit types ===
 
     def fixed64(self) -> int:
         """Read as fixed64."""
@@ -208,15 +138,13 @@ class Field:
         """Read as sfixed64."""
         self._require_wire_type(WireType.FIXED64)
         assert self._value is not None
-        return _native_fixed64_to_sfixed64(self._value)
+        return fixed64_to_sfixed64(self._value)
 
     def double(self) -> float:
         """Read as double."""
         self._require_wire_type(WireType.FIXED64)
         assert self._value is not None
         return double_from_bits(self._value)
-
-    # === Fixed 32-bit types ===
 
     def fixed32(self) -> int:
         """Read as fixed32."""
@@ -228,15 +156,13 @@ class Field:
         """Read as sfixed32."""
         self._require_wire_type(WireType.FIXED32)
         assert self._value is not None
-        return _native_fixed32_to_sfixed32(self._value)
+        return fixed32_to_sfixed32(self._value)
 
     def float(self) -> float:
         """Read as float."""
         self._require_wire_type(WireType.FIXED32)
         assert self._value is not None
         return float_from_bits(self._value)
-
-    # === Length-delimited types ===
 
     def string(self) -> str:
         """Read as UTF-8 string."""
@@ -248,9 +174,7 @@ class Field:
     def bytes(self) -> bytes:
         """Read as raw bytes."""
         self._require_wire_type(WireType.LEN)
-        if isinstance(self._data, memoryview):
-            return bytes(self._data)
-        return self._data
+        return bytes(self._data)
 
     def message_data(self) -> builtins.bytes:
         """Get raw message data for nested message parsing."""
@@ -261,75 +185,70 @@ class Field:
         self._require_wire_type(WireType.LEN)
         return Reader(self._data)
 
-    # === Packed repeated types ===
-
     def packed_int32s(self) -> list[int]:
         """Read as packed repeated int32."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_int32s(self._data)
+        return decode_packed_int32s(self._data)
 
     def packed_int64s(self) -> list[int]:
         """Read as packed repeated int64."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_int64s(self._data)
+        return decode_packed_int64s(self._data)
 
     def packed_uint32s(self) -> list[int]:
         """Read as packed repeated uint32."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_uint32s(self._data)
+        return decode_packed_uint32s(self._data)
 
     def packed_uint64s(self) -> list[int]:
         """Read as packed repeated uint64."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_uint64s(self._data)
+        return decode_packed_uint64s(self._data)
 
     def packed_sint32s(self) -> list[int]:
         """Read as packed repeated sint32."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_sint32s(self._data)
+        return decode_packed_sint32s(self._data)
 
     def packed_sint64s(self) -> list[int]:
         """Read as packed repeated sint64."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_sint64s(self._data)
+        return decode_packed_sint64s(self._data)
 
     def packed_bools(self) -> list[builtins.bool]:
         """Read as packed repeated bool."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_bools(self._data)
+        return decode_packed_bools(self._data)
 
     def packed_fixed32s(self) -> list[int]:
         """Read as packed repeated fixed32."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_fixed32s(self._data)
+        return decode_packed_fixed32s(self._data)
 
     def packed_sfixed32s(self) -> list[int]:
         """Read as packed repeated sfixed32."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_sfixed32s(self._data)
+        return decode_packed_sfixed32s(self._data)
 
     def packed_floats(self) -> list[builtins.float]:
         """Read as packed repeated float."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_floats(self._data)
+        return decode_packed_floats(self._data)
 
     def packed_fixed64s(self) -> list[int]:
         """Read as packed repeated fixed64."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_fixed64s(self._data)
+        return decode_packed_fixed64s(self._data)
 
     def packed_sfixed64s(self) -> list[int]:
         """Read as packed repeated sfixed64."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_sfixed64s(self._data)
+        return decode_packed_sfixed64s(self._data)
 
     def packed_doubles(self) -> list[builtins.float]:
         """Read as packed repeated double."""
         self._require_wire_type(WireType.LEN)
-        return _native_decode_packed_doubles(self._data)
-
-
-# === Reader class ===
+        return decode_packed_doubles(self._data)
 
 
 class Reader:
@@ -337,7 +256,7 @@ class Reader:
 
     __slots__ = ("_data", "_raw", "_pos", "_len")
 
-    def __init__(self, data: bytes | memoryview) -> None:
+    def __init__(self, data: Buffer) -> None:
         if isinstance(data, memoryview):
             self._data = data
             self._raw = data.tobytes()
@@ -361,9 +280,10 @@ class Reader:
         if self._pos >= self._len:
             return None
 
-        # Read tag (using native decode_varint)
+        # Read tag
         tag, self._pos = decode_varint(self._raw, self._pos)
-        field_number, wire_type = parse_tag(tag)
+        field_number, wire_type_int = parse_tag(tag)
+        wire_type = WireType(wire_type_int)
 
         # Read value based on wire type
         match wire_type:
@@ -391,14 +311,15 @@ class Reader:
 
     def skip(self) -> bool:
         """Skip the next field. Returns True if a field was skipped, False if at end."""
-        return self.next_field() is not None
+        new_pos = skip_field(self._raw, self._pos)
+        if new_pos is None:
+            return False
+        self._pos = new_pos
+        return True
 
     def remaining(self) -> int:
         """Return the number of bytes remaining to be read."""
         return self._len - self._pos
-
-
-# === Writer class ===
 
 
 class Writer:
@@ -414,9 +335,7 @@ class Writer:
         self._field_num = field_num
 
     def _write_tag(self, field_number: int, wire_type: WireType) -> None:
-        self._buffer.extend(encode_varint(make_tag(field_number, wire_type)))
-
-    # === Varint types ===
+        self._buffer.extend(encode_varint(make_tag(field_number, int(wire_type))))
 
     def int32(self, field_number: int, value: int) -> None:
         """Write an int32 field."""
@@ -457,8 +376,6 @@ class Writer:
         """Write an enum field (same as int32)."""
         self.int32(field_number, value)
 
-    # === Fixed 64-bit types ===
-
     def fixed64(self, field_number: int, value: int) -> None:
         """Write a fixed64 field."""
         self._write_tag(field_number, WireType.FIXED64)
@@ -474,8 +391,6 @@ class Writer:
         self._write_tag(field_number, WireType.FIXED64)
         self._buffer.extend(encode_double(value))
 
-    # === Fixed 32-bit types ===
-
     def fixed32(self, field_number: int, value: int) -> None:
         """Write a fixed32 field."""
         self._write_tag(field_number, WireType.FIXED32)
@@ -490,8 +405,6 @@ class Writer:
         """Write a float field."""
         self._write_tag(field_number, WireType.FIXED32)
         self._buffer.extend(encode_float(value))
-
-    # === Length-delimited types ===
 
     def string(self, field_number: int, value: str) -> None:
         """Write a string field."""
@@ -527,8 +440,6 @@ class Writer:
             self._parent._write_tag(self._field_num, WireType.LEN)
             self._parent._buffer.extend(encode_varint(len(self._buffer)))
             self._parent._buffer.extend(self._buffer)
-
-    # === Packed repeated types ===
 
     def packed_int32s(self, field_number: int, values: list[int]) -> None:
         """Write packed repeated int32."""

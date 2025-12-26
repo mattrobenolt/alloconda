@@ -127,6 +127,9 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
     .decode_packed_doubles = py.method(decodePackedDoubles, .{
         .doc = "Decode packed double values.",
     }),
+    .skip_field = py.method(skipField, .{
+        .doc = "Skip a field at offset, returns new offset or None at end.",
+    }),
 });
 
 fn encodeVarint(value: py.Object) !py.Bytes {
@@ -239,6 +242,70 @@ fn decodeFixed64(data: py.Buffer, offset: usize) !py.Tuple {
     const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
     const value = wire.readInt(u64, raw_ptr);
     return tuple2(u64, value, usize, offset + 8);
+}
+
+fn skipField(data: py.Buffer, offset: usize) !?usize {
+    var buffer = data;
+    defer buffer.release();
+    const slice = buffer.slice();
+    if (offset >= slice.len) return null;
+
+    const tag, const tag_len = wire.decodeVarint(u64, slice[offset..]) catch |err| {
+        return py.raise(.ValueError, switch (err) {
+            wire.Error.Truncated => "truncated varint",
+            wire.Error.VarintTooLong => "varint too long",
+            else => "decode error",
+        });
+    };
+    const parsed = wire.Tag.parse(tag) catch |err| {
+        return py.raise(.ValueError, switch (err) {
+            wire.Error.InvalidWireType => "invalid wire type",
+            wire.Error.InvalidFieldNumber => "invalid field number",
+            else => "invalid tag",
+        });
+    };
+
+    var pos = offset + tag_len;
+    switch (parsed.wire_type) {
+        .varint => {
+            _, const bytes_read = wire.decodeVarint(u64, slice[pos..]) catch |err| {
+                return py.raise(.ValueError, switch (err) {
+                    wire.Error.Truncated => "truncated varint",
+                    wire.Error.VarintTooLong => "varint too long",
+                    else => "decode error",
+                });
+            };
+            pos += bytes_read;
+        },
+        .fixed64 => {
+            if (slice.len - pos < 8) {
+                return py.raise(.ValueError, "truncated fixed64");
+            }
+            pos += 8;
+        },
+        .len => {
+            const length, const length_len = wire.decodeVarint(u64, slice[pos..]) catch |err| {
+                return py.raise(.ValueError, switch (err) {
+                    wire.Error.Truncated => "truncated varint",
+                    wire.Error.VarintTooLong => "varint too long",
+                    else => "decode error",
+                });
+            };
+            pos += length_len;
+            if (slice.len - pos < length) {
+                return py.raise(.ValueError, "truncated length-delimited field");
+            }
+            pos += length;
+        },
+        .fixed32 => {
+            if (slice.len - pos < 4) {
+                return py.raise(.ValueError, "truncated fixed32");
+            }
+            pos += 4;
+        },
+    }
+
+    return pos;
 }
 
 fn makeTag(field_number: u32, wire_type_int: u8) !u32 {

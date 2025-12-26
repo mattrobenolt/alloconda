@@ -9,6 +9,11 @@ import builtins
 import struct
 from collections.abc import Iterator
 
+try:
+    from collections.abc import Buffer  # type: ignore[unresolved-import]
+except ImportError:
+    Buffer = bytes | bytearray | memoryview
+
 from fastproto import WireType
 
 # Convenience aliases
@@ -51,7 +56,7 @@ def encode_varint(value: int) -> builtins.bytes:
     return bytes(result)
 
 
-def decode_varint(data: bytes | memoryview, offset: int = 0) -> tuple[int, int]:
+def decode_varint(data: Buffer, offset: int = 0) -> tuple[int, int]:
     """Decode a varint from data at the given offset."""
     result = 0
     shift = 0
@@ -70,7 +75,7 @@ def decode_varint(data: bytes | memoryview, offset: int = 0) -> tuple[int, int]:
     return result, pos
 
 
-def iter_varints(data: bytes | memoryview) -> Iterator[int]:
+def iter_varints(data: Buffer) -> Iterator[int]:
     """Iterate over varints in a packed repeated field."""
     offset = 0
     while offset < len(data):
@@ -105,7 +110,7 @@ class Field:
         self,
         number: int,
         wire_type: WireType,
-        data: bytes | memoryview,
+        data: Buffer,
         value: int | None = None,
     ) -> None:
         self.number = number
@@ -238,9 +243,7 @@ class Field:
     def bytes(self) -> builtins.bytes:
         """Read as raw bytes."""
         self._require_wire_type(WIRE_LEN)
-        if isinstance(self._data, memoryview):
-            return bytes(self._data)
-        return self._data
+        return bytes(self._data)
 
     def message_data(self) -> builtins.bytes:
         """Read as embedded message data (raw bytes for recursive parsing)."""
@@ -368,7 +371,7 @@ class Reader:
 
     __slots__ = ("_data", "_pos", "_len")
 
-    def __init__(self, data: bytes | memoryview) -> None:
+    def __init__(self, data: Buffer) -> None:
         if isinstance(data, memoryview):
             self._data = data
         else:
@@ -454,7 +457,7 @@ class Writer:
     __slots__ = ("_buffer", "_parent", "_field_num")
 
     def __init__(
-        self, parent: "Writer | None" = None, field_num: int | None = None
+        self, parent: "Writer" | None = None, field_num: int | None = None
     ) -> None:
         self._buffer = bytearray()
         self._parent = parent
