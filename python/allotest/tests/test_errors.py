@@ -12,11 +12,6 @@ class TestExceptionTypes:
         with pytest.raises(TypeError, match="test type error"):
             allotest.raise_type_error()
 
-    def test_optional_error(self) -> None:
-        """Test that optional returns with py.raise() propagate exceptions."""
-        with pytest.raises(ValueError, match="test optional error"):
-            allotest.raise_optional_error()
-
     def test_value_error(self) -> None:
         with pytest.raises(ValueError, match="test value error"):
             allotest.raise_value_error()

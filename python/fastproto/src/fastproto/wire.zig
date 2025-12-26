@@ -52,6 +52,14 @@ pub fn Signed(comptime T: type) type {
 /// Maximum bytes a varint can occupy (64-bit value).
 pub const max_varint_len: usize = 10;
 
+pub inline fn readInt(comptime T: type, buffer: *const [@divExact(@typeInfo(T).int.bits, 8)]u8) T {
+    return std.mem.readInt(T, buffer, .little);
+}
+
+pub inline fn writeInt(comptime T: type, buffer: *[@divExact(@typeInfo(T).int.bits, 8)]u8, value: T) void {
+    return std.mem.writeInt(T, buffer, value, .little);
+}
+
 /// Encode an integer as a varint into a buffer.
 /// Returns the number of bytes written.
 pub fn encodeVarint(comptime T: type, value: T, buf: []u8) !usize {

@@ -16,14 +16,26 @@ pub const Exception = enum {
     KeyError,
 };
 
+pub const PyError = error{PythonError};
+
 /// Raise a Python exception of a given kind.
-pub fn raise(comptime kind: Exception, msg: [:0]const u8) void {
+pub inline fn raise(comptime kind: Exception, msg: [:0]const u8) PyError {
+    setError(kind, msg);
+    return error.PythonError;
+}
+
+/// Set a Python exception of a given kind without returning an error.
+pub inline fn setError(comptime kind: Exception, msg: [:0]const u8) void {
     _ = c.PyErr_SetString(exceptionPtr(kind), msg);
 }
 
 /// Return true if a Python exception is already set.
-pub fn errorOccurred() bool {
+pub inline fn errorOccurred() bool {
     return c.PyErr_Occurred() != null;
+}
+
+pub inline fn reraise() !void {
+    if (errorOccurred()) return error.PythonError;
 }
 
 /// Mapping entry for raiseError.
@@ -34,7 +46,7 @@ pub const ErrorMap = struct {
 };
 
 /// Raise a mapped Python exception for a Zig error.
-pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) void {
+pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) PyError {
     inline for (mapping) |entry| {
         if (err == entry.err) {
             if (entry.msg) |msg| {
@@ -42,17 +54,16 @@ pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) void {
             } else {
                 setPythonErrorKind(entry.kind, err);
             }
-            return;
+            return error.PythonError;
         }
     }
     setPythonError(err);
+    return error.PythonError;
 }
 
 /// Set a Python RuntimeError from a Zig error if no exception is pending.
 pub fn setPythonError(err: anyerror) void {
-    if (c.PyErr_Occurred() != null) {
-        return;
-    }
+    if (errorOccurred()) return;
     setPythonErrorKind(.RuntimeError, err);
 }
 

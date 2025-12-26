@@ -9,8 +9,6 @@ const math = std.math;
 const py = @import("alloconda");
 const PyObject = py.PyObject;
 
-const CallError = error{ PythonError, OutOfMemory, WriteFailed };
-
 const ZonDocument = py.class("ZonDocument", "Small helper for stored ZON text/value.", .{
     .set_text = py.method(docSetText, .{
         .self = true,
@@ -58,7 +56,7 @@ pub const MODULE = py.module("_zigzon", "ZON codec implemented in Zig.", .{
     }),
 }).withTypes(.{ .ZonDocument = ZonDocument });
 
-fn loads(input: py.Object) CallError!py.Object {
+fn loads(input: py.Object) !py.Object {
     var arena = py.arenaAllocator();
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -67,70 +65,65 @@ fn loads(input: py.Object) CallError!py.Object {
     return parseZon(allocator, source);
 }
 
-fn to_python(input: py.Object) CallError!py.Object {
+fn to_python(input: py.Object) !py.Object {
     return loads(input);
 }
 
-fn load(fp: py.Object) CallError!py.Object {
-    const data = fp.callMethod0("read") orelse return error.PythonError;
+fn load(fp: py.Object) !py.Object {
+    const data = try fp.callMethod0("read");
     defer data.deinit();
     return loads(data);
 }
 
-fn dumps(value: py.Object) CallError!py.Object {
+fn dumps(value: py.Object) !py.Object {
     var arena = py.arenaAllocator();
     defer arena.deinit();
     const allocator = arena.allocator();
     const text = try renderZon(allocator, value.ptr);
-    return py.Object.from([]const u8, text) orelse error.PythonError;
+    return py.Object.from([]const u8, text);
 }
 
-fn from_python(value: py.Object) CallError!py.Object {
+fn from_python(value: py.Object) !py.Object {
     return dumps(value);
 }
 
-fn dump(value: py.Object, fp: py.Object) CallError!void {
+fn dump(value: py.Object, fp: py.Object) !void {
     var arena = py.arenaAllocator();
     defer arena.deinit();
     const allocator = arena.allocator();
     const text = try renderZon(allocator, value.ptr);
-    const result = fp.callMethod1("write", []const u8, text) orelse return error.PythonError;
+    const result = try fp.callMethod1("write", []const u8, text);
     result.deinit();
 }
 
-fn docSetText(self: py.Object, text: py.Object) CallError!void {
+fn docSetText(self: py.Object, text: py.Object) !void {
     if (!text.isUnicode() and !text.isBytes()) {
-        py.raise(.TypeError, "text must be str or bytes");
-        return error.PythonError;
+        return py.raise(.TypeError, "text must be str or bytes");
     }
-    if (!self.setAttr("text", py.Object, text)) {
-        return error.PythonError;
-    }
+    try self.setAttr("text", py.Object, text);
 }
 
-fn docGetText(self: py.Object) CallError!py.Object {
-    return self.getAttr("text") orelse error.PythonError;
+fn docGetText(self: py.Object) !py.Object {
+    return self.getAttr("text");
 }
 
-fn docLoads(self: py.Object) CallError!py.Object {
-    const text = self.getAttr("text") orelse return error.PythonError;
+fn docLoads(self: py.Object) !py.Object {
+    const text = try self.getAttr("text");
     defer text.deinit();
     return loads(text);
 }
 
-fn docSetValue(self: py.Object, value: py.Object) CallError!void {
-    if (!self.setAttr("value", py.Object, value)) {
-        return error.PythonError;
-    }
+fn docSetValue(self: py.Object, value: py.Object) !void {
+    try self.setAttr("value", py.Object, value);
 }
 
-fn docDumps(self: py.Object) CallError!py.Object {
-    const value = self.getAttr("value") orelse return error.PythonError;
+fn docDumps(self: py.Object) !py.Object {
+    const value = try self.getAttr("value");
     defer value.deinit();
     return dumps(value);
 }
 
-fn parseZon(gpa: Allocator, source: [:0]const u8) CallError!py.Object {
+fn parseZon(gpa: Allocator, source: [:0]const u8) !py.Object {
     var diag: std.zon.parse.Diagnostics = .{};
     defer diag.deinit(gpa);
 
@@ -140,71 +133,68 @@ fn parseZon(gpa: Allocator, source: [:0]const u8) CallError!py.Object {
     diag.zoir = zoir;
 
     if (zoir.hasCompileErrors()) {
-        raiseParseError(gpa, &diag);
-        return error.PythonError;
+        return raiseParseError(gpa, &diag);
     }
 
     return zoirToPy(gpa, zoir, .root);
 }
 
-fn coerceSource(gpa: Allocator, input: py.Object) CallError![:0]const u8 {
+fn coerceSource(gpa: Allocator, input: py.Object) ![:0]const u8 {
     if (input.isUnicode()) {
-        const text = input.unicodeSlice() orelse return error.PythonError;
+        const text = try input.unicodeSlice();
         return copyWithSentinel(gpa, text);
     }
     if (input.isBytes()) {
-        const text = input.bytesSlice() orelse return error.PythonError;
+        const text = try input.bytesSlice();
         return copyWithSentinel(gpa, text);
     }
-    py.raise(.TypeError, "expected str or bytes");
-    return error.PythonError;
+    return py.raise(.TypeError, "expected str or bytes");
 }
 
-fn copyWithSentinel(gpa: Allocator, data: []const u8) CallError![:0]const u8 {
+fn copyWithSentinel(gpa: Allocator, data: []const u8) ![:0]const u8 {
     const buf = try gpa.alloc(u8, data.len + 1);
     @memcpy(buf[0..data.len], data);
     buf[data.len] = 0;
     return buf[0..data.len :0];
 }
 
-fn raiseParseError(gpa: Allocator, diag: *const std.zon.parse.Diagnostics) void {
+fn raiseParseError(gpa: Allocator, diag: *const std.zon.parse.Diagnostics) py.PyError {
     var output: Writer.Allocating = .init(gpa);
     defer output.deinit();
 
     diag.format(&output.writer) catch {
-        py.raise(.ValueError, "ZON parse error");
-        return;
+        return py.raise(.ValueError, "ZON parse error");
     };
 
     const msg = output.toOwnedSliceSentinel(0) catch {
-        py.raise(.ValueError, "ZON parse error");
-        return;
+        return py.raise(.ValueError, "ZON parse error");
     };
-    py.raise(.ValueError, msg);
+
+    return py.raise(.ValueError, msg);
 }
 
-fn renderZon(gpa: Allocator, obj: *PyObject) CallError![]const u8 {
+fn renderZon(gpa: Allocator, obj: *PyObject) ![]const u8 {
     var output: Writer.Allocating = .init(gpa);
     defer output.deinit();
     try writeZonValue(&output.writer, obj);
     return output.toOwnedSlice();
 }
 
-fn zoirToPy(gpa: Allocator, zoir: Zoir, node: Zoir.Node.Index) CallError!py.Object {
+fn zoirToPy(gpa: Allocator, zoir: Zoir, node: Zoir.Node.Index) anyerror!py.Object {
     return switch (node.get(zoir)) {
-        .true => py.Object.from(bool, true) orelse error.PythonError,
-        .false => py.Object.from(bool, false) orelse error.PythonError,
+        .true => try py.Object.from(bool, true),
+        .false => try py.Object.from(bool, false),
         .null => py.none(),
-        .pos_inf => py.Object.from(f64, math.inf(f64)) orelse error.PythonError,
-        .neg_inf => py.Object.from(f64, -math.inf(f64)) orelse error.PythonError,
-        .nan => return py.Object.from(f64, math.nan(f64)) orelse error.PythonError,
+        .pos_inf => try py.Object.from(f64, math.inf(f64)),
+        .neg_inf => try py.Object.from(f64, -math.inf(f64)),
+        .nan => try py.Object.from(f64, math.nan(f64)),
         .int_literal => |lit| intLiteralToPy(gpa, lit),
-        .float_literal => |value| py.Object.from(f64, @as(f64, @floatCast(value))) orelse error.PythonError,
+        .float_literal => |value| try py.Object.from(f64, @floatCast(value)),
         .char_literal => |value| charLiteralToPy(value),
-        .enum_literal => |value| py.Object.from(@TypeOf(value.get(zoir)), value.get(zoir)) orelse error.PythonError,
-        .string_literal => |value| py.Object.from([]const u8, value) orelse error.PythonError,
+        .enum_literal => |value| try py.Object.from(@TypeOf(value.get(zoir)), value.get(zoir)),
+        .string_literal => |value| try py.Object.from([]const u8, value),
         .empty_literal => {
-            const dict = py.Dict.init() orelse return error.PythonError;
+            const dict = try py.Dict.init();
             return dict.obj;
         },
         .array_literal => |range| arrayToPy(gpa, zoir, range),
@@ -212,73 +202,68 @@ fn zoirToPy(gpa: Allocator, zoir: Zoir, node: Zoir.Node.Index) CallError!py.Obje
     };
 }
 
-fn intLiteralToPy(gpa: Allocator, lit: anytype) CallError!py.Object {
+fn intLiteralToPy(gpa: Allocator, lit: anytype) anyerror!py.Object {
     switch (lit) {
-        .small => |value| return py.Object.from(i64, @as(i64, value)) orelse error.PythonError,
+        .small => |value| return py.Object.from(i64, @intCast(value)),
         .big => |value| {
             const text = try value.toStringAlloc(gpa, 10, .lower);
             const ztext = try copyWithSentinel(gpa, text);
-            return py.Long.fromString(ztext) orelse error.PythonError;
+            return py.Long.fromString(ztext);
         },
     }
 }
 
-fn charLiteralToPy(value: u21) CallError!py.Object {
+fn charLiteralToPy(value: u21) anyerror!py.Object {
     var buf: [4]u8 = undefined;
     const len = std.unicode.utf8Encode(value, &buf) catch {
-        py.raise(.ValueError, "invalid char literal");
-        return error.PythonError;
+        return py.raise(.ValueError, "invalid char literal");
     };
-    return py.Object.from([]const u8, @as([]const u8, buf[0..len])) orelse error.PythonError;
+    return py.Object.from([]const u8, @as([]const u8, buf[0..len]));
 }
 
-fn arrayToPy(gpa: Allocator, zoir: Zoir, range: Zoir.Node.Index.Range) CallError!py.Object {
-    var list = py.List.init(@intCast(range.len)) orelse return error.PythonError;
+fn arrayToPy(gpa: Allocator, zoir: Zoir, range: Zoir.Node.Index.Range) anyerror!py.Object {
+    var list = try py.List.init(@intCast(range.len));
+    errdefer list.deinit();
     var i: u32 = 0;
     while (i < range.len) : (i += 1) {
         const item = try zoirToPy(gpa, zoir, range.at(i));
-        if (!list.set(py.Object, @intCast(i), item)) {
-            list.deinit();
-            return error.PythonError;
-        }
+        try list.set(py.Object, @intCast(i), item);
     }
     return list.obj;
 }
 
-fn structToPy(gpa: Allocator, zoir: Zoir, fields: anytype) CallError!py.Object {
-    var dict = py.Dict.init() orelse return error.PythonError;
+fn structToPy(gpa: Allocator, zoir: Zoir, fields: anytype) anyerror!py.Object {
+    var dict = try py.Dict.init();
+    errdefer dict.deinit();
     var i: usize = 0;
     while (i < fields.names.len) : (i += 1) {
         const name = fields.names[i].get(zoir);
         const value = try zoirToPy(gpa, zoir, fields.vals.at(@intCast(i)));
-        if (!dict.setItem([]const u8, name, py.Object, value)) {
-            dict.deinit();
-            return error.PythonError;
-        }
+        try dict.setItem([]const u8, name, py.Object, value);
     }
     return dict.obj;
 }
 
-fn writeZonValue(writer: *Writer, obj: *PyObject) CallError!void {
+fn writeZonValue(writer: *Writer, obj: *PyObject) anyerror!void {
     const obj_ref = py.Object.borrowed(obj);
     if (obj_ref.isNone()) {
         try writer.writeAll("null");
         return;
     }
     if (obj_ref.isBool()) {
-        const value = obj_ref.isTrue() orelse return error.PythonError;
+        const value = try obj_ref.isTrue();
         try writer.writeAll(if (value) "true" else "false");
         return;
     }
     if (obj_ref.isLong()) {
-        const text_obj = obj_ref.str() orelse return error.PythonError;
+        const text_obj = try obj_ref.str();
         defer text_obj.deinit();
-        const text = text_obj.unicodeSlice() orelse return error.PythonError;
+        const text = try text_obj.unicodeSlice();
         try writer.writeAll(text);
         return;
     }
     if (obj_ref.isFloat()) {
-        const value = obj_ref.as(f64) orelse return error.PythonError;
+        const value = try obj_ref.as(f64);
         if (math.isNan(value)) {
             try writer.writeAll("nan");
         } else if (math.isInf(value)) {
@@ -289,24 +274,24 @@ fn writeZonValue(writer: *Writer, obj: *PyObject) CallError!void {
         return;
     }
     if (obj_ref.isUnicode()) {
-        const text = obj_ref.unicodeSlice() orelse return error.PythonError;
+        const text = try obj_ref.unicodeSlice();
         try writer.print("\"{f}\"", .{std.zig.fmtString(text)});
         return;
     }
     if (obj_ref.isBytes()) {
-        const text = obj_ref.bytesSlice() orelse return error.PythonError;
+        const text = try obj_ref.bytesSlice();
         try writer.print("\"{f}\"", .{std.zig.fmtString(text)});
         return;
     }
     if (obj_ref.isList()) {
         const list = py.List.borrowed(obj_ref.ptr);
-        const size = list.len() orelse return error.PythonError;
+        const size = try list.len();
         try writeZonSequence(writer, .{ .list = list }, size);
         return;
     }
     if (obj_ref.isTuple()) {
         const tuple = py.Tuple.borrowed(obj_ref.ptr);
-        const size = tuple.len() orelse return error.PythonError;
+        const size = try tuple.len();
         try writeZonSequence(writer, .{ .tuple = tuple }, size);
         return;
     }
@@ -315,22 +300,22 @@ fn writeZonValue(writer: *Writer, obj: *PyObject) CallError!void {
         return;
     }
 
-    py.raise(.TypeError, "unsupported type for ZON serialization");
-    return error.PythonError;
+    return py.raise(.TypeError, "unsupported type for ZON serialization");
 }
 
 const ListOrTuple = union(enum) {
     list: py.List,
     tuple: py.Tuple,
 
-    fn get(self: @This(), index: usize) ?py.Object {
+    fn get(self: @This(), index: usize) anyerror!py.Object {
         return switch (self) {
-            inline else => |t| t.get(index),
+            .list => |list| try list.get(index),
+            .tuple => |tuple| try tuple.get(index),
         };
     }
 };
 
-fn writeZonSequence(writer: *Writer, seq: ListOrTuple, size: usize) CallError!void {
+fn writeZonSequence(writer: *Writer, seq: ListOrTuple, size: usize) anyerror!void {
     try writer.writeAll(".{");
     if (size == 0) {
         try writer.writeAll("}");
@@ -342,16 +327,16 @@ fn writeZonSequence(writer: *Writer, seq: ListOrTuple, size: usize) CallError!vo
         if (i != 0) {
             try writer.writeAll(", ");
         }
-        const item = seq.get(i) orelse return error.PythonError;
+        const item = try seq.get(i);
         try writeZonValue(writer, item.ptr);
     }
     try writer.writeAll(" }");
 }
 
-fn writeZonDict(writer: *Writer, obj: *PyObject) CallError!void {
+fn writeZonDict(writer: *Writer, obj: *PyObject) anyerror!void {
     try writer.writeAll(".{");
     var first = true;
-    var iter = py.DictIter.fromPtr(obj) orelse return error.PythonError;
+    var iter = try py.DictIter.fromPtr(obj);
     while (iter.next()) |entry| {
         if (first) {
             try writer.writeAll(" ");
@@ -369,16 +354,15 @@ fn writeZonDict(writer: *Writer, obj: *PyObject) CallError!void {
     try writer.writeAll("}");
 }
 
-fn writeZonKey(writer: *Writer, key: *PyObject) CallError!void {
+fn writeZonKey(writer: *Writer, key: *PyObject) anyerror!void {
     const text = try stringLikeSlice(key);
     try writer.writeAll(".");
     try writer.print("{f}", .{std.zig.fmtId(text)});
 }
 
-fn stringLikeSlice(obj: *PyObject) CallError![]const u8 {
+fn stringLikeSlice(obj: *PyObject) anyerror![]const u8 {
     const obj_ref = py.Object.borrowed(obj);
-    if (obj_ref.isUnicode()) return obj_ref.unicodeSlice() orelse error.PythonError;
-    if (obj_ref.isBytes()) return obj_ref.bytesSlice() orelse error.PythonError;
-    py.raise(.TypeError, "dict keys must be str or bytes");
-    return error.PythonError;
+    if (obj_ref.isUnicode()) return obj_ref.unicodeSlice();
+    if (obj_ref.isBytes()) return obj_ref.bytesSlice();
+    return py.raise(.TypeError, "dict keys must be str or bytes");
 }

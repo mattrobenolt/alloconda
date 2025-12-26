@@ -5,8 +5,7 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .alloconda = .{
-            .url = "../../",
-            .hash = "alloconda-0.0.0-tRxrxltTAQBBKNZsgUrtGrlMrIHeQ-RZK4enF9Xe8wOS",
+            .path = "../../",
         },
     },
     .paths = .{

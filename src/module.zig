@@ -2,9 +2,19 @@ const std = @import("std");
 const fmt = std.fmt;
 const mem = std.mem;
 
+const errors = @import("errors.zig");
+const PyError = errors.PyError;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
 const cstr = ffi.cstr;
+const PyObject = ffi.PyObject;
+const PyMem = ffi.PyMem;
+const PyModule = ffi.PyModule;
+const PyType = ffi.PyType;
+const PyDict = ffi.PyDict;
+const PyUnicode = ffi.PyUnicode;
+const PyManagedDict = ffi.PyManagedDict;
+const PyGC = ffi.PyGC;
 const method_mod = @import("method.zig");
 const buildMethodDefs = method_mod.buildMethodDefs;
 
@@ -102,25 +112,19 @@ pub const Module = struct {
     }
 
     /// Create the Python module object.
-    pub fn create(self: *const Module) ?*c.PyObject {
-        const def_ptr = c.PyMem_Malloc(@sizeOf(c.PyModuleDef)) orelse {
-            _ = c.PyErr_NoMemory();
-            return null;
-        };
+    pub fn create(self: *const Module) PyError!*c.PyObject {
+        const def_ptr = try PyMem.alloc(@sizeOf(c.PyModuleDef));
+        errdefer PyMem.free(def_ptr);
+
         const def: *c.PyModuleDef = @ptrCast(@alignCast(def_ptr));
         def.* = self.inner;
-        const module_obj = c.PyModule_Create(def);
-        if (module_obj == null) {
-            c.PyMem_Free(def_ptr);
-            return null;
-        }
+
+        const module_obj = try PyModule.create(def);
+        errdefer PyObject.decRef(module_obj);
+
         if (self.types) |type_list| {
             for (type_list) |class_def| {
-                if (!class_def.addToModule(module_obj, self.name)) {
-                    c.Py_DecRef(module_obj);
-                    c.PyMem_Free(def_ptr);
-                    return null;
-                }
+                try class_def.addToModule(module_obj, self.name);
             }
         }
         return module_obj;
@@ -147,7 +151,7 @@ pub const Class = struct {
     slots: [*c]const c.PyType_Slot,
     doc: ?[:0]const u8,
 
-    fn create(self: *const Class) ?*c.PyObject {
+    fn create(self: *const Class) PyError!*c.PyObject {
         var spec = c.PyType_Spec{
             .name = @ptrCast(self.name.ptr),
             .basicsize = @intCast(classBasicSize()),
@@ -155,15 +159,15 @@ pub const Class = struct {
             .flags = classFlags(),
             .slots = @constCast(self.slots),
         };
-        return c.PyType_FromSpec(&spec);
+        return PyType.fromSpec(&spec);
     }
 
-    fn addToModule(self: *const Class, module_obj: *c.PyObject, module_name: []const u8) bool {
-        const type_obj = self.create() orelse return false;
-        if (!setTypeModule(type_obj, module_name)) {
-            c.Py_DecRef(type_obj);
-            return false;
-        }
+    fn addToModule(self: *const Class, module_obj: *c.PyObject, module_name: []const u8) PyError!void {
+        const type_obj = try self.create();
+        var owns_ref = true;
+        errdefer if (owns_ref) PyObject.decRef(type_obj);
+
+        try setTypeModule(type_obj, module_name);
         // For Python <3.12, we need to set tp_dictoffset manually after type creation.
         // This enables attribute storage via __dict__. The slot API doesn't support
         // setting tp_dictoffset directly, so we modify the type object here.
@@ -174,19 +178,16 @@ pub const Class = struct {
             // For heap types, Python stores __doc__ in the type dict, not tp_doc.
             // Setting tp_doc directly doesn't update the dict entry.
             if (self.doc) |doc_text| {
-                const doc_obj = c.PyUnicode_FromStringAndSize(doc_text.ptr, @intCast(doc_text.len));
+                const doc_obj = PyUnicode.fromSlice(doc_text[0..doc_text.len]) catch null;
                 if (doc_obj) |doc| {
-                    _ = c.PyObject_SetAttrString(type_obj, "__doc__", doc);
-                    c.Py_DecRef(doc);
+                    defer PyObject.decRef(doc);
+                    _ = PyObject.setAttrString(type_obj, cstr("__doc__"), doc) catch {};
                 }
                 // If creating the string fails, we silently leave __doc__ as None.
             }
         }
-        if (c.PyModule_AddObject(module_obj, @ptrCast(self.attr_name.ptr), type_obj) != 0) {
-            c.Py_DecRef(type_obj);
-            return false;
-        }
-        return true;
+        try PyModule.addObject(module_obj, self.attr_name, type_obj);
+        owns_ref = false;
     }
 };
 
@@ -226,7 +227,7 @@ fn classSlots(
     else
         null;
     const free_fn: ?*anyopaque = if (use_gc)
-        @ptrCast(@constCast(&c.PyObject_GC_Del))
+        @ptrCast(@constCast(&PyGC.del))
     else
         null;
 
@@ -311,7 +312,7 @@ fn allocondaTypeNew(
     args: ?*c.PyObject,
     kwargs: ?*c.PyObject,
 ) callconv(.c) ?*c.PyObject {
-    const obj = c.PyType_GenericNew(type_obj, args, kwargs) orelse return null;
+    const obj = PyType.genericNew(type_obj, args, kwargs) catch return null;
     // For non-GC types (Python <3.12), initialize the dict slot with an empty dict.
     // On 3.12+, MANAGED_DICT handles this automatically.
     // We need a real dict (not NULL) because T_OBJECT_EX raises AttributeError for NULL.
@@ -319,56 +320,25 @@ fn allocondaTypeNew(
         const offset: usize = @intCast(DefaultDictOffset);
         const base: [*]u8 = @ptrCast(@constCast(obj));
         const slot: *?*c.PyObject = @ptrCast(@alignCast(base + offset));
-        slot.* = c.PyDict_New();
+        slot.* = PyDict.new() catch return null;
     }
     return obj;
 }
 
 // GC traverse/clear helpers - use comptime selection to avoid referencing
 // symbols that don't exist on older Python versions.
-const GcHelpers = if (@hasDecl(c, "PyObject_VisitManagedDict"))
-    struct {
-        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
-            return c.PyObject_VisitManagedDict(obj, visitfn, arg);
-        }
-        fn clear(obj: *c.PyObject) void {
-            c.PyObject_ClearManagedDict(obj);
-        }
-    }
-else if (@hasDecl(c, "_PyObject_VisitManagedDict"))
-    struct {
-        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
-            return c._PyObject_VisitManagedDict(obj, visitfn, arg);
-        }
-        fn clear(obj: *c.PyObject) void {
-            c._PyObject_ClearManagedDict(obj);
-        }
-    }
-else
-    struct {
-        fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
-            _ = obj;
-            _ = visitfn;
-            _ = arg;
-            return 0;
-        }
-        fn clear(obj: *c.PyObject) void {
-            _ = obj;
-        }
-    };
-
 fn allocondaTypeTraverse(
     self: ?*c.PyObject,
     visit: c.visitproc,
     arg: ?*anyopaque,
 ) callconv(.c) c_int {
     const obj = self orelse return 0;
-    return GcHelpers.visit(obj, visit, arg);
+    return PyManagedDict.visit(obj, visit, arg);
 }
 
 fn allocondaTypeClear(self: ?*c.PyObject) callconv(.c) c_int {
     const obj = self orelse return 0;
-    GcHelpers.clear(obj);
+    PyManagedDict.clear(obj);
     return 0;
 }
 
@@ -378,14 +348,15 @@ fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
     // IMPORTANT: For heap types, we must save the type reference before freeing,
     // then DECREF the type AFTER freeing the object. This is critical for Python 3.11+
     // where heap type lifecycle management changed.
-    const type_obj: *c.PyTypeObject = @ptrCast(c.Py_TYPE(obj));
+    const type_obj = PyType.typePtr(obj);
+    defer PyObject.decRef(@ptrCast(type_obj));
 
     // CRITICAL: If this type is GC-tracked, we must untrack BEFORE any cleanup.
     // Failing to do this causes the GC to find dangling pointers during collection,
     // which manifests as segfaults during interpreter shutdown (especially on 3.11).
     if (@hasDecl(c, "PyObject_GC_UnTrack") and @hasDecl(c, "Py_TPFLAGS_HAVE_GC")) {
         if ((type_obj.tp_flags & c.Py_TPFLAGS_HAVE_GC) != 0) {
-            c.PyObject_GC_UnTrack(obj);
+            PyGC.untrack(obj);
         }
     }
 
@@ -395,7 +366,7 @@ fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
         const base: [*]u8 = @ptrCast(obj);
         const slot: *?*c.PyObject = @ptrCast(@alignCast(base + offset));
         if (slot.*) |dict| {
-            c.Py_DecRef(dict);
+            PyObject.decRef(dict);
             slot.* = null;
         }
     }
@@ -404,12 +375,7 @@ fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
     // This handles both GC and non-GC types correctly:
     // - For non-GC types: tp_free = PyObject_Free
     // - For GC types: tp_free = PyObject_GC_Del
-    if (type_obj.tp_free) |free_fn| {
-        free_fn(obj);
-    }
-
-    // LAST: Decref the type (required for heap types)
-    c.Py_DecRef(@ptrCast(type_obj));
+    if (type_obj.tp_free) |free_fn| free_fn(obj);
 }
 
 // ============================================================================
@@ -475,8 +441,8 @@ fn shortTypeName(comptime name: [:0]const u8) [:0]const u8 {
     return name;
 }
 
-fn setTypeModule(type_obj: *c.PyObject, module_name: []const u8) bool {
-    const mod_obj = c.PyUnicode_FromStringAndSize(module_name.ptr, @intCast(module_name.len)) orelse return false;
-    defer c.Py_DecRef(mod_obj);
-    return c.PyObject_SetAttrString(type_obj, @ptrCast(cstr("__module__").ptr), mod_obj) == 0;
+fn setTypeModule(type_obj: *c.PyObject, module_name: []const u8) PyError!void {
+    const mod_obj = try PyUnicode.fromSlice(module_name);
+    defer PyObject.decRef(mod_obj);
+    try PyObject.setAttrString(type_obj, cstr("__module__"), mod_obj);
 }

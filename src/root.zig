@@ -6,13 +6,14 @@
 const errors = @import("errors.zig");
 pub const Exception = errors.Exception;
 pub const ErrorMap = errors.ErrorMap;
+pub const PyError = errors.PyError;
 pub const raise = errors.raise;
 pub const errorOccurred = errors.errorOccurred;
 pub const raiseError = errors.raiseError;
 pub const ffi = @import("ffi.zig");
 pub const c = ffi.c;
-pub const PyObject = ffi.PyObject;
-pub const Py_ssize_t = ffi.Py_ssize_t;
+pub const PyObject = c.PyObject;
+pub const Py_ssize_t = c.Py_ssize_t;
 pub const allocator = ffi.allocator;
 pub const arenaAllocator = ffi.arenaAllocator;
 const method_mod = @import("method.zig");

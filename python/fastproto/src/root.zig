@@ -3,7 +3,7 @@
 //! Exposes the Zig protobuf implementation to Python.
 
 const std = @import("std");
-const mem = std.mem;
+const intToEnum = std.meta.intToEnum;
 
 const fastproto = @import("fastproto");
 const wire = fastproto.wire;
@@ -129,153 +129,139 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
     }),
 });
 
-fn encodeVarint(value: py.Object) ?py.Bytes {
-    const parsed = py.Long.fromObject(value) orelse return null;
+fn encodeVarint(value: py.Object) !py.Bytes {
+    const parsed = try py.Long.fromObject(value);
     var buf: [wire.max_varint_len]u8 = undefined;
-    const len = switch (parsed) {
-        .signed => |signed| wire.encodeVarint(i64, signed, &buf) catch return null,
-        .unsigned => |unsigned| wire.encodeVarint(u64, unsigned, &buf) catch return null,
+    const len = try switch (parsed) {
+        .signed => |v| wire.encodeVarint(i64, v, &buf),
+        .unsigned => |v| wire.encodeVarint(u64, v, &buf),
     };
     return .fromSlice(buf[0..len]);
 }
 
-fn encodeVarintUnsigned(value: u64) ?py.Bytes {
+fn encodeVarintUnsigned(value: u64) !py.Bytes {
     var buf: [wire.max_varint_len]u8 = undefined;
-    const len = wire.encodeVarint(u64, value, &buf) catch return null;
+    const len = try wire.encodeVarint(u64, value, &buf);
     return .fromSlice(buf[0..len]);
 }
 
-fn decodeVarint(data: py.Buffer, offset: usize) ?py.Tuple {
+fn decodeVarint(data: py.Buffer, offset: usize) !py.Tuple {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
     if (offset >= slice.len) {
-        py.raise(.ValueError, "offset beyond data length");
-        return null;
+        return py.raise(.ValueError, "offset beyond data length");
     }
     const value, const bytes_read = wire.decodeVarint(u64, slice[offset..]) catch |err| {
-        switch (err) {
-            wire.Error.Truncated => py.raise(.ValueError, "truncated varint"),
-            wire.Error.VarintTooLong => py.raise(.ValueError, "varint too long"),
-            else => py.raise(.ValueError, "decode error"),
-        }
-        return null;
+        return py.raise(.ValueError, switch (err) {
+            wire.Error.Truncated => "truncated varint",
+            wire.Error.VarintTooLong => "varint too long",
+            else => "decode error",
+        });
     };
     return tuple2(u64, value, usize, offset + bytes_read);
 }
 
-fn tuple2(comptime T0: type, first: T0, comptime T1: type, second: T1) ?py.Tuple {
-    var result = py.Tuple.init(2) orelse return null;
-    if (!result.set(T0, 0, first)) {
-        result.deinit();
-        return null;
-    }
-    if (!result.set(T1, 1, second)) {
-        result.deinit();
-        return null;
-    }
+fn tuple2(comptime T0: type, first: T0, comptime T1: type, second: T1) !py.Tuple {
+    var result = try py.Tuple.init(2);
+    errdefer result.deinit();
+    try result.set(T0, 0, first);
+    try result.set(T1, 1, second);
     return result;
 }
 
-fn encodeFixed32(value: py.Object) ?py.Bytes {
-    const masked = py.Long.unsignedMask(value) orelse return null;
+fn encodeFixed32(value: py.Object) !py.Bytes {
+    const masked = try py.Long.unsignedMask(value);
     const cast_value: u32 = @truncate(masked);
     var buf: [4]u8 = undefined;
-    mem.writeInt(u32, &buf, cast_value, .little);
+    wire.writeInt(u32, &buf, cast_value);
     return .fromSlice(&buf);
 }
 
-fn encodeSfixed32(value: i32) ?py.Bytes {
+fn encodeSfixed32(value: i32) !py.Bytes {
     var buf: [4]u8 = undefined;
-    mem.writeInt(i32, &buf, value, .little);
+    wire.writeInt(i32, &buf, value);
     return .fromSlice(&buf);
 }
 
-fn encodeFixed64(value: py.Object) ?py.Bytes {
-    const masked = py.Long.unsignedMask(value) orelse return null;
+fn encodeFixed64(value: py.Object) !py.Bytes {
+    const masked = try py.Long.unsignedMask(value);
     var buf: [8]u8 = undefined;
-    mem.writeInt(u64, &buf, masked, .little);
+    wire.writeInt(u64, &buf, masked);
     return .fromSlice(&buf);
 }
 
-fn encodeSfixed64(value: i64) ?py.Bytes {
+fn encodeSfixed64(value: i64) !py.Bytes {
     var buf: [8]u8 = undefined;
-    mem.writeInt(i64, &buf, value, .little);
+    wire.writeInt(i64, &buf, value);
     return .fromSlice(&buf);
 }
 
-fn encodeFloat(value: f32) ?py.Bytes {
+fn encodeFloat(value: f32) !py.Bytes {
     var buf: [4]u8 = undefined;
-    mem.writeInt(u32, &buf, @bitCast(value), .little);
+    wire.writeInt(u32, &buf, @bitCast(value));
     return .fromSlice(&buf);
 }
 
-fn encodeDouble(value: f64) ?py.Bytes {
+fn encodeDouble(value: f64) !py.Bytes {
     var buf: [8]u8 = undefined;
-    mem.writeInt(u64, &buf, @bitCast(value), .little);
+    wire.writeInt(u64, &buf, @bitCast(value));
     return .fromSlice(&buf);
 }
 
-fn decodeFixed32(data: py.Buffer, offset: usize) ?py.Tuple {
+fn decodeFixed32(data: py.Buffer, offset: usize) !py.Tuple {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
     if (offset >= slice.len) {
-        py.raise(.ValueError, "offset beyond data length");
-        return null;
+        return py.raise(.ValueError, "offset beyond data length");
     }
     if (slice.len - offset < 4) {
-        py.raise(.ValueError, "truncated fixed32");
-        return null;
+        return py.raise(.ValueError, "truncated fixed32");
     }
     const raw = slice[offset .. offset + 4];
     const raw_ptr: *const [4]u8 = @ptrCast(raw.ptr);
-    const value = mem.readInt(u32, raw_ptr, .little);
+    const value = wire.readInt(u32, raw_ptr);
     return tuple2(u32, value, usize, offset + 4);
 }
 
-fn decodeFixed64(data: py.Buffer, offset: usize) ?py.Tuple {
+fn decodeFixed64(data: py.Buffer, offset: usize) !py.Tuple {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
     if (offset >= slice.len) {
-        py.raise(.ValueError, "offset beyond data length");
-        return null;
+        return py.raise(.ValueError, "offset beyond data length");
     }
     if (slice.len - offset < 8) {
-        py.raise(.ValueError, "truncated fixed64");
-        return null;
+        return py.raise(.ValueError, "truncated fixed64");
     }
     const raw = slice[offset .. offset + 8];
     const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
-    const value = mem.readInt(u64, raw_ptr, .little);
+    const value = wire.readInt(u64, raw_ptr);
     return tuple2(u64, value, usize, offset + 8);
 }
 
-fn makeTag(field_number: u32, wire_type_int: u8) ?u32 {
-    if (field_number < 1) {
-        py.raise(.ValueError, "field number must be >= 1");
-        return null;
-    }
-    if (field_number > 0x1FFFFFFF) {
-        py.raise(.ValueError, "field number too large");
-        return null;
-    }
-    if (wire_type_int > 5 or wire_type_int == 3 or wire_type_int == 4) {
-        py.raise(.ValueError, "invalid wire type");
-        return null;
-    }
-    return (field_number << 3) | @as(u32, wire_type_int);
+fn makeTag(field_number: u32, wire_type_int: u8) !u32 {
+    const wire_type = intToEnum(wire.WireType, wire_type_int) catch {
+        return py.raise(.ValueError, "invalid wire type");
+    };
+    const tag = wire.Tag.init(field_number, wire_type) catch |err| {
+        return py.raise(.ValueError, switch (err) {
+            fastproto.Error.InvalidFieldNumber => "field number must be >= 1",
+            fastproto.Error.FieldNumberTooLarge => "field number too large",
+            else => "invalid tag",
+        });
+    };
+    return tag.encode();
 }
 
-fn parseTag(tag: u64) ?py.Tuple {
+fn parseTag(tag: u64) !py.Tuple {
     const parsed = wire.Tag.parse(tag) catch |err| {
-        switch (err) {
-            wire.Error.InvalidWireType => py.raise(.ValueError, "invalid wire type"),
-            wire.Error.InvalidFieldNumber => py.raise(.ValueError, "invalid field number"),
-            else => py.raise(.ValueError, "invalid tag"),
-        }
-        return null;
+        return py.raise(.ValueError, switch (err) {
+            wire.Error.InvalidWireType => "invalid wire type",
+            wire.Error.InvalidFieldNumber => "invalid field number",
+            else => "invalid tag",
+        });
     };
     return tuple2(u32, parsed.field_number, u3, @intFromEnum(parsed.wire_type));
 }
@@ -342,21 +328,20 @@ const VarintKind = enum {
     bool,
 };
 
-fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) ?py.List {
+fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) !py.List {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
-    var list = py.List.init(0) orelse return null;
+    var list = try py.List.init(0);
+    errdefer list.deinit();
     var offset: usize = 0;
     while (offset < slice.len) {
         const value, const bytes_read = wire.decodeVarint(u64, slice[offset..]) catch |err| {
-            list.deinit();
-            switch (err) {
-                wire.Error.Truncated => py.raise(.ValueError, "truncated varint"),
-                wire.Error.VarintTooLong => py.raise(.ValueError, "varint too long"),
-                else => py.raise(.ValueError, "decode error"),
-            }
-            return null;
+            return py.raise(.ValueError, switch (err) {
+                wire.Error.Truncated => "truncated varint",
+                wire.Error.VarintTooLong => "varint too long",
+                else => "decode error",
+            });
         };
         offset += bytes_read;
         const out = switch (kind) {
@@ -368,39 +353,36 @@ fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) ?py.List {
             .sint64 => varintToSint64(value),
             .bool => varintToBool(value),
         };
-        if (!list.append(@TypeOf(out), out)) {
-            list.deinit();
-            return null;
-        }
+        try list.append(@TypeOf(out), out);
     }
     return list;
 }
 
-fn decodePackedInt32s(data: py.Buffer) ?py.List {
+fn decodePackedInt32s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .int32);
 }
 
-fn decodePackedInt64s(data: py.Buffer) ?py.List {
+fn decodePackedInt64s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .int64);
 }
 
-fn decodePackedUint32s(data: py.Buffer) ?py.List {
+fn decodePackedUint32s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .uint32);
 }
 
-fn decodePackedUint64s(data: py.Buffer) ?py.List {
+fn decodePackedUint64s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .uint64);
 }
 
-fn decodePackedSint32s(data: py.Buffer) ?py.List {
+fn decodePackedSint32s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .sint32);
 }
 
-fn decodePackedSint64s(data: py.Buffer) ?py.List {
+fn decodePackedSint64s(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .sint64);
 }
 
-fn decodePackedBools(data: py.Buffer) ?py.List {
+fn decodePackedBools(data: py.Buffer) !py.List {
     return decodePackedVarints(data, .bool);
 }
 
@@ -410,48 +392,43 @@ const Fixed32Kind = enum {
     float,
 };
 
-fn decodePackedFixed32(data: py.Buffer, comptime kind: Fixed32Kind) ?py.List {
+fn decodePackedFixed32(data: py.Buffer, comptime kind: Fixed32Kind) !py.List {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
-    if (slice.len % 4 != 0) {
-        switch (kind) {
-            .fixed32 => py.raise(.ValueError, "packed fixed32 data length not a multiple of 4"),
-            .sfixed32 => py.raise(.ValueError, "packed sfixed32 data length not a multiple of 4"),
-            .float => py.raise(.ValueError, "packed float data length not a multiple of 4"),
-        }
-        return null;
-    }
+    if (slice.len % 4 != 0) return py.raise(.ValueError, switch (kind) {
+        .fixed32 => "packed fixed32 data length not a multiple of 4",
+        .sfixed32 => "packed sfixed32 data length not a multiple of 4",
+        .float => "packed float data length not a multiple of 4",
+    });
     const count = slice.len / 4;
-    var list = py.List.init(count) orelse return null;
+    var list = try py.List.init(count);
+    errdefer list.deinit();
     var i: usize = 0;
     while (i < count) : (i += 1) {
         const start = i * 4;
         const raw = slice[start .. start + 4];
         const raw_ptr: *const [4]u8 = @ptrCast(raw.ptr);
-        const value = mem.readInt(u32, raw_ptr, .little);
+        const value = wire.readInt(u32, raw_ptr);
         const out = switch (kind) {
             .fixed32 => value,
             .sfixed32 => fixed32ToSfixed32(value),
             .float => @as(f32, @bitCast(value)),
         };
-        if (!list.set(@TypeOf(out), i, out)) {
-            list.deinit();
-            return null;
-        }
+        try list.set(@TypeOf(out), i, out);
     }
     return list;
 }
 
-fn decodePackedFixed32s(data: py.Buffer) ?py.List {
+fn decodePackedFixed32s(data: py.Buffer) !py.List {
     return decodePackedFixed32(data, .fixed32);
 }
 
-fn decodePackedSfixed32s(data: py.Buffer) ?py.List {
+fn decodePackedSfixed32s(data: py.Buffer) !py.List {
     return decodePackedFixed32(data, .sfixed32);
 }
 
-fn decodePackedFloats(data: py.Buffer) ?py.List {
+fn decodePackedFloats(data: py.Buffer) !py.List {
     return decodePackedFixed32(data, .float);
 }
 
@@ -461,47 +438,42 @@ const Fixed64Kind = enum {
     double,
 };
 
-fn decodePackedFixed64(data: py.Buffer, comptime kind: Fixed64Kind) ?py.List {
+fn decodePackedFixed64(data: py.Buffer, comptime kind: Fixed64Kind) !py.List {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
-    if (slice.len % 8 != 0) {
-        switch (kind) {
-            .fixed64 => py.raise(.ValueError, "packed fixed64 data length not a multiple of 8"),
-            .sfixed64 => py.raise(.ValueError, "packed sfixed64 data length not a multiple of 8"),
-            .double => py.raise(.ValueError, "packed double data length not a multiple of 8"),
-        }
-        return null;
-    }
+    if (slice.len % 8 != 0) return py.raise(.ValueError, switch (kind) {
+        .fixed64 => "packed fixed64 data length not a multiple of 8",
+        .sfixed64 => "packed sfixed64 data length not a multiple of 8",
+        .double => "packed double data length not a multiple of 8",
+    });
     const count = slice.len / 8;
-    var list = py.List.init(count) orelse return null;
+    var list = try py.List.init(count);
+    errdefer list.deinit();
     var i: usize = 0;
     while (i < count) : (i += 1) {
         const start = i * 8;
         const raw = slice[start .. start + 8];
         const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
-        const value = mem.readInt(u64, raw_ptr, .little);
+        const value = wire.readInt(u64, raw_ptr);
         const out = switch (kind) {
             .fixed64 => value,
             .sfixed64 => fixed64ToSfixed64(value),
             .double => @as(f64, @bitCast(value)),
         };
-        if (!list.set(@TypeOf(out), i, out)) {
-            list.deinit();
-            return null;
-        }
+        try list.set(@TypeOf(out), i, out);
     }
     return list;
 }
 
-fn decodePackedFixed64s(data: py.Buffer) ?py.List {
+fn decodePackedFixed64s(data: py.Buffer) !py.List {
     return decodePackedFixed64(data, .fixed64);
 }
 
-fn decodePackedSfixed64s(data: py.Buffer) ?py.List {
+fn decodePackedSfixed64s(data: py.Buffer) !py.List {
     return decodePackedFixed64(data, .sfixed64);
 }
 
-fn decodePackedDoubles(data: py.Buffer) ?py.List {
+fn decodePackedDoubles(data: py.Buffer) !py.List {
     return decodePackedFixed64(data, .double);
 }

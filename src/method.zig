@@ -5,10 +5,16 @@ const mem = std.mem;
 const meta = std.meta;
 
 const errors = @import("errors.zig");
+const PyError = errors.PyError;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
 const cstr = ffi.cstr;
 const cPtr = ffi.cPtr;
+const pyNoneOwned = ffi.pyNoneOwned;
+const PyErr = ffi.PyErr;
+const PyTuple = ffi.PyTuple;
+const PyDict = ffi.PyDict;
+const PyUnicode = ffi.PyUnicode;
 const types = @import("types.zig");
 const Object = types.Object;
 const fromPy = types.fromPy;
@@ -132,7 +138,10 @@ fn WrapperType(
                 args: ?*c.PyObject,
                 kwargs: ?*c.PyObject,
             ) callconv(.c) ?*c.PyObject {
-                return callImplKw(func, self, args, kwargs, arg_names.?, include_self);
+                return callImplKw(func, self, args, kwargs, arg_names.?, include_self) catch |err| {
+                    errors.setPythonError(err);
+                    return null;
+                };
             }
         };
     }
@@ -141,7 +150,10 @@ fn WrapperType(
             self: ?*c.PyObject,
             args: ?*c.PyObject,
         ) callconv(.c) ?*c.PyObject {
-            return callImpl(func, self, args, include_self);
+            return callImpl(func, self, args, include_self) catch |err| {
+                errors.setPythonError(err);
+                return null;
+            };
         }
     };
 }
@@ -162,7 +174,7 @@ fn callImpl(
     self_obj: ?*c.PyObject,
     args: ?*c.PyObject,
     comptime include_self: bool,
-) ?*c.PyObject {
+) PyError!?*c.PyObject {
     const fn_info = @typeInfo(@TypeOf(func)).@"fn";
     const params = fn_info.params;
 
@@ -173,7 +185,7 @@ fn callImpl(
     if (arg_count == 0) {
         var tuple: meta.Tuple(ParamTypes) = undefined;
         if (include_self) {
-            const self_val = fromPy(ParamTypes[0], self_obj) orelse return null;
+            const self_val = try fromPy(ParamTypes[0], self_obj);
             tuple[0] = self_val;
         }
         return callAndConvert(func, tuple);
@@ -184,35 +196,29 @@ fn callImpl(
     const max_args = ArgTypes.len;
 
     const args_obj = args;
-    const got: usize = if (args_obj) |obj| blk: {
-        const size = c.PyTuple_Size(obj);
-        if (size < 0) return null;
-        break :blk @intCast(size);
-    } else 0;
+    const got: usize = if (args_obj) |obj| try PyTuple.size(obj) else 0;
 
     if (got < min_args or got > max_args) {
-        setArgCountError(min_args, max_args, got);
-        return null;
+        return setArgCountError(min_args, max_args, got);
     }
 
     var tuple: meta.Tuple(ParamTypes) = undefined;
     if (include_self) {
-        const self_val = fromPy(ParamTypes[0], self_obj) orelse return null;
+        const self_val = try fromPy(ParamTypes[0], self_obj);
         tuple[0] = self_val;
     }
 
     inline for (ArgTypes, 0..) |T, i| {
         const param_index = i + arg_offset;
         if (i < got) {
-            const item = c.PyTuple_GetItem(args_obj.?, @intCast(i)) orelse return null;
-            const value = fromPy(T, item) orelse return null;
+            const item = try PyTuple.getItem(args_obj.?, i);
+            const value = try fromPy(T, item);
             tuple[param_index] = value;
         } else {
             if (comptime isOptionalType(T)) {
                 tuple[param_index] = null;
             } else {
-                setArgCountError(min_args, max_args, got);
-                return null;
+                return setArgCountError(min_args, max_args, got);
             }
         }
     }
@@ -227,7 +233,7 @@ fn callImplKw(
     kwargs: ?*c.PyObject,
     comptime arg_names: []const [:0]const u8,
     comptime include_self: bool,
-) ?*c.PyObject {
+) PyError!?*c.PyObject {
     const fn_info = @typeInfo(@TypeOf(func)).@"fn";
     const params = fn_info.params;
 
@@ -242,7 +248,7 @@ fn callImplKw(
 
     var tuple: meta.Tuple(ParamTypes) = undefined;
     if (include_self) {
-        const self_val = fromPy(ParamTypes[0], self_obj) orelse return null;
+        const self_val = try fromPy(ParamTypes[0], self_obj);
         tuple[0] = self_val;
     }
 
@@ -250,41 +256,30 @@ fn callImplKw(
     var filled: [ArgTypes.len]bool = .{false} ** ArgTypes.len;
 
     const args_obj = args;
-    const got: usize = if (args_obj) |obj| blk: {
-        const size = c.PyTuple_Size(obj);
-        if (size < 0) return null;
-        break :blk @intCast(size);
-    } else 0;
+    const got: usize = if (args_obj) |obj| try PyTuple.size(obj) else 0;
 
     if (got > ArgTypes.len) {
-        setArgCountError(min_args, ArgTypes.len, got);
-        return null;
+        return setArgCountError(min_args, ArgTypes.len, got);
     }
 
     for (values[0..got], 0..) |*slot, i| {
-        const item = c.PyTuple_GetItem(args_obj.?, @intCast(i)) orelse return null;
+        const item = try PyTuple.getItem(args_obj.?, i);
         slot.* = item;
         filled[i] = true;
     }
 
     if (kwargs) |kw| {
         var pos: c.Py_ssize_t = 0;
-        var key: ?*c.PyObject = null;
-        var value: ?*c.PyObject = null;
-
-        while (c.PyDict_Next(kw, &pos, &key, &value) != 0) {
-            var len: c.Py_ssize_t = 0;
-            const raw = c.PyUnicode_AsUTF8AndSize(key, &len) orelse return null;
-            const key_slice = raw[0..@intCast(len)];
+        while (PyDict.next(kw, &pos)) |entry| {
+            const key_slice = try PyUnicode.slice(entry.key);
             var matched = false;
 
             inline for (arg_names, 0..) |name, i| {
                 if (mem.eql(u8, key_slice, name)) {
                     if (filled[i]) {
-                        setDuplicateArgError(name);
-                        return null;
+                        return setDuplicateArgError(name);
                     }
-                    values[i] = value;
+                    values[i] = entry.value;
                     filled[i] = true;
                     matched = true;
                     break;
@@ -292,8 +287,7 @@ fn callImplKw(
             }
 
             if (!matched) {
-                setUnexpectedKeywordError(key_slice);
-                return null;
+                return setUnexpectedKeywordError(key_slice);
             }
         }
     }
@@ -301,13 +295,12 @@ fn callImplKw(
     inline for (ArgTypes, 0..) |T, i| {
         const param_index = i + arg_offset;
         if (values[i]) |item| {
-            const value = fromPy(T, item) orelse return null;
+            const value = try fromPy(T, item);
             tuple[param_index] = value;
         } else if (comptime isOptionalType(T)) {
             tuple[param_index] = null;
         } else {
-            setMissingArgError(arg_names[i]);
-            return null;
+            return setMissingArgError(arg_names[i]);
         }
     }
 
@@ -326,29 +319,43 @@ fn callAndConvert(comptime func: anytype, args_tuple: anytype) ?*c.PyObject {
                 errors.setPythonError(err);
                 return null;
             };
-            return c.Py_BuildValue("");
+            return pyNoneOwned();
         }
 
         const value = @call(.auto, func, args_tuple) catch |err| {
             errors.setPythonError(err);
             return null;
         };
-        return toPy(payload, value);
+        return toPy(payload, value) catch |err| {
+            errors.setPythonError(err);
+            return null;
+        };
+    }
+
+    if (ret_info == .error_set) {
+        const err = @call(.auto, func, args_tuple);
+        errors.setPythonError(err);
+        return null;
     }
 
     if (ret_type == void) {
         _ = @call(.auto, func, args_tuple);
-        return c.Py_BuildValue("");
+        return pyNoneOwned();
     }
 
     const value = @call(.auto, func, args_tuple);
-    // For optional types, check if null + exception set (user called py.raise)
+    // Optional return values cannot signal errors; enforce error unions instead.
     if (comptime isOptionalType(ret_type)) {
         if (value == null and errors.errorOccurred()) {
-            return null; // Propagate the exception
+            PyErr.clear();
+            errors.setError(.RuntimeError, "optional returns cannot signal errors; use PyError!T");
+            return null;
         }
     }
-    return toPy(ret_type, value);
+    return toPy(ret_type, value) catch |err| {
+        errors.setPythonError(err);
+        return null;
+    };
 }
 
 // ============================================================================
@@ -408,9 +415,7 @@ fn validateArgNames(
 
 fn isSelfParam(comptime T: type) bool {
     if (T == Object) return true;
-    if (isOptionalType(T)) {
-        return @typeInfo(T).optional.child == Object;
-    }
+    if (isOptionalType(T)) return @typeInfo(T).optional.child == Object;
     return false;
 }
 
@@ -440,7 +445,7 @@ pub fn methodCount(comptime methods: anytype) usize {
 // Error message helpers
 // ============================================================================
 
-fn setArgCountError(min_expected: usize, max_expected: usize, got: usize) void {
+fn setArgCountError(min_expected: usize, max_expected: usize, got: usize) PyError {
     var buf: [128]u8 = undefined;
     const fallback: [:0]const u8 = "argument count mismatch";
     const msg = if (min_expected == max_expected)
@@ -455,10 +460,10 @@ fn setArgCountError(min_expected: usize, max_expected: usize, got: usize) void {
             "expected {d} to {d} arguments, got {d}",
             .{ min_expected, max_expected, got },
         ) catch fallback;
-    _ = c.PyErr_SetString(c.PyExc_TypeError, msg);
+    return errors.raise(.TypeError, msg);
 }
 
-fn setDuplicateArgError(name: []const u8) void {
+fn setDuplicateArgError(name: []const u8) PyError {
     var buf: [128]u8 = undefined;
     const fallback: [:0]const u8 = "duplicate argument";
     const msg = fmt.bufPrintZ(
@@ -466,10 +471,10 @@ fn setDuplicateArgError(name: []const u8) void {
         "got multiple values for argument '{s}'",
         .{name},
     ) catch fallback;
-    _ = c.PyErr_SetString(c.PyExc_TypeError, msg);
+    return errors.raise(.TypeError, msg);
 }
 
-fn setMissingArgError(name: []const u8) void {
+fn setMissingArgError(name: []const u8) PyError {
     var buf: [128]u8 = undefined;
     const fallback: [:0]const u8 = "missing required argument";
     const msg = fmt.bufPrintZ(
@@ -477,10 +482,10 @@ fn setMissingArgError(name: []const u8) void {
         "missing required argument '{s}'",
         .{name},
     ) catch fallback;
-    _ = c.PyErr_SetString(c.PyExc_TypeError, msg);
+    return errors.raise(.TypeError, msg);
 }
 
-fn setUnexpectedKeywordError(name: []const u8) void {
+fn setUnexpectedKeywordError(name: []const u8) PyError {
     var buf: [128]u8 = undefined;
     const fallback: [:0]const u8 = "unexpected keyword argument";
     const msg = fmt.bufPrintZ(
@@ -488,5 +493,5 @@ fn setUnexpectedKeywordError(name: []const u8) void {
         "got unexpected keyword argument '{s}'",
         .{name},
     ) catch fallback;
-    _ = c.PyErr_SetString(c.PyExc_TypeError, msg);
+    return errors.raise(.TypeError, msg);
 }

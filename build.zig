@@ -53,35 +53,7 @@ pub fn addPythonLibrary(b: *std.Build, options: LibraryOptions) *std.Build.Step.
         alloc_mod.addSystemIncludePath(python.include_path);
     }
 
-    const entry_source =
-        \\const std = @import("std");
-        \\const user = @import("user");
-        \\
-        \\comptime {
-        \\    if (!@hasDecl(user, "MODULE")) {
-        \\        @compileError("Expected `pub const MODULE = ...` in the root module");
-        \\    }
-        \\
-        \\    const ModuleType = @TypeOf(user.MODULE);
-        \\    if (!@hasField(ModuleType, "name")) {
-        \\        @compileError("`MODULE` must have a `name` field");
-        \\    }
-        \\    if (!@hasDecl(ModuleType, "create")) {
-        \\        @compileError("`MODULE` must define `create()`");
-        \\    }
-        \\}
-        \\
-        \\const ReturnType = @TypeOf(user.MODULE.create());
-        \\
-        \\fn pyInit() callconv(.c) ReturnType {
-        \\    return user.MODULE.create();
-        \\}
-        \\
-        \\comptime {
-        \\    const sym = std.fmt.comptimePrint("PyInit_{s}", .{user.MODULE.name});
-        \\    @export(&pyInit, .{ .name = sym });
-        \\}
-    ;
+    const entry_source = @embedFile("build/alloconda_entry.zig");
 
     const entry_files = b.addWriteFiles();
     const entry_path = entry_files.add("alloconda_entry.zig", entry_source);
