@@ -237,8 +237,11 @@ def lib_suffix_for_target(
 
 
 def detect_module_name(lib_path: Path) -> str:
-    output = try_nm(lib_path)
-    matches = sorted(set(re.findall(r"PyInit_[A-Za-z0-9_]+", output)))
+    pyinit_symbol_re = re.compile(r"_*PyInit_[A-Za-z0-9_]+")
+    symbol_names = load_symbol_names(lib_path)
+    matches = sorted(
+        {name.lstrip("_") for name in symbol_names if pyinit_symbol_re.fullmatch(name)}
+    )
     if not matches:
         raise click.ClickException(f"No PyInit_* symbols found in {lib_path}")
     if len(matches) > 1:
@@ -249,23 +252,32 @@ def detect_module_name(lib_path: Path) -> str:
     return matches[0].removeprefix("PyInit_")
 
 
-def try_nm(lib_path: Path) -> str:
-    commands = [
-        ["nm", "-g", str(lib_path)],
-        ["nm", "-gU", str(lib_path)],
-        ["nm", "-D", str(lib_path)],
-        ["objdump", "-t", str(lib_path)],
-    ]
-    for cmd in commands:
-        try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except (FileNotFoundError, subprocess.CalledProcessError):
+def load_symbol_names(lib_path: Path) -> list[str]:
+    import lief
+
+    lief.logging.set_level(lief.logging.LEVEL.ERROR)
+    try:
+        binary = lief.parse(str(lib_path))
+    except Exception as exc:  # pragma: no cover - lief errors vary by platform
+        raise click.ClickException(
+            f"Could not parse library symbols in {lib_path}"
+        ) from exc
+    if binary is None:
+        raise click.ClickException(f"Could not parse library symbols in {lib_path}")
+
+    names: list[str] = []
+    for attr in ("exported_symbols", "dynamic_symbols", "symbols"):
+        symbols = getattr(binary, attr, None)
+        if not symbols:
             continue
-        if result.stdout:
-            return result.stdout
-    raise click.ClickException(
-        "Could not inspect library symbols (nm/objdump not available)"
-    )
+        for symbol in symbols:
+            name = getattr(symbol, "name", "")
+            if not name:
+                continue
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", "replace")
+            names.append(name)
+    return names
 
 
 def resolve_package_dir(package_dir: Path | None, base_dir: Path | None = None) -> Path:
