@@ -154,6 +154,7 @@ module-name = "_zigadd"
 package-dir = "zigadd"
 python-version = "3.14"
 optimize = "ReleaseFast"
+build-step = "lib"
 python-tag = "cp314"
 abi-tag = "cp314"
 manylinux = "2_28"
@@ -165,3 +166,5 @@ exclude = ["tests/*"]
 Release is the default. Use `--debug` to build with `-Doptimize=Debug`; `optimize`
 only affects release builds. CLI flags and PEP 517 `--config-settings` override
 these values.
+
+Use `build-step` to run a specific Zig build step (e.g. `lib` runs `zig build lib`).

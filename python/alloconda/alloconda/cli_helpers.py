@@ -100,10 +100,13 @@ def run_zig_build(
     release: bool,
     zig_target: str | None,
     python_include: str | None,
+    build_step: str | None = None,
     optimize: str | None = None,
     workdir: Path | None = None,
 ) -> None:
     cmd = ["zig", "build"]
+    if build_step:
+        cmd.append(build_step)
     if optimize:
         cmd.append(f"-Doptimize={optimize}")
     elif release:
@@ -533,6 +536,7 @@ def build_extension(
     ext_suffix: str | None,
     zig_target: str | None,
     python_include: str | None,
+    build_step: str | None,
     no_init: bool,
     force_init: bool,
     skip_build: bool = False,
@@ -544,6 +548,7 @@ def build_extension(
             release,
             zig_target,
             python_include,
+            build_step=build_step,
             optimize=optimize,
             workdir=build_root,
         )

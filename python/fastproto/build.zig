@@ -40,7 +40,11 @@ pub fn build(b: *std.Build) void {
         .name = "fastproto",
         .root_module = bindings,
     });
-    b.installArtifact(lib);
+    const lib_install = b.addInstallArtifact(lib, .{});
+    b.getInstallStep().dependOn(&lib_install.step);
+
+    const lib_step = b.step("lib", "Build the Python extension library");
+    lib_step.dependOn(&lib_install.step);
 
     const exe = b.addExecutable(.{
         .name = "fastproto",

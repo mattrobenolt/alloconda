@@ -111,6 +111,7 @@ def wheel(
     ext_suffix = ext_suffix or config_value(config, "ext-suffix")
     out_dir = out_dir or config_path(config, project_root, "out-dir")
     zig_target = zig_target or config_value(config, "zig-target")
+    build_step = config_value(config, "build-step")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
     skip_build = skip_build or config_bool(config, "skip-build")
@@ -147,6 +148,7 @@ def wheel(
         arch=arch,
         ext_suffix=ext_suffix,
         out_dir=out_dir,
+        build_step=build_step,
         no_init=no_init,
         force_init=force_init,
         skip_build=skip_build,

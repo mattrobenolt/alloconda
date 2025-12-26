@@ -144,6 +144,7 @@ def wheel_all(
     project_dir = project_dir or config_path(config, project_root, "project-dir")
     out_dir = out_dir or config_path(config, project_root, "out-dir")
     cache_dir = cache_dir or config_path(config, project_root, "python-cache")
+    build_step = config_value(config, "build-step")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
     module_name = config_value(config, "module-name")
@@ -231,6 +232,7 @@ def wheel_all(
             manylinux=target.manylinux,
             musllinux=target.musllinux,
             arch=resolve_arch(target.arch),
+            build_step=build_step,
             no_init=no_init,
             force_init=force_init,
             skip_build=False,

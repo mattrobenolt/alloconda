@@ -68,6 +68,7 @@ def build_wheel(
     manylinux: str | None,
     musllinux: str | None,
     arch: str | None,
+    build_step: str | None,
     no_init: bool,
     force_init: bool,
     skip_build: bool,
@@ -105,6 +106,7 @@ def build_wheel(
             release,
             zig_target,
             python_include,
+            build_step=build_step,
             optimize=optimize,
             workdir=build_root,
         )

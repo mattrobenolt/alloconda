@@ -64,6 +64,7 @@ def build(
     ext_suffix = ext_suffix or config_value(config, "ext-suffix")
     zig_target = zig_target or config_value(config, "zig-target")
     python_include = python_include or config_value(config, "python-include")
+    build_step = config_value(config, "build-step")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
     release = resolve_release_mode(
@@ -87,6 +88,7 @@ def build(
         ext_suffix=ext_suffix,
         zig_target=zig_target,
         python_include=python_include,
+        build_step=build_step,
         no_init=no_init,
         force_init=force_init,
         workdir=build_root,
