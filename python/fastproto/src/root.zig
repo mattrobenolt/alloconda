@@ -9,6 +9,8 @@ const fastproto = @import("fastproto");
 const wire = fastproto.wire;
 const py = @import("alloconda");
 
+const Buffer = std.ArrayList(u8);
+
 pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/decoding.", .{
     .encode_varint = py.method(encodeVarint, .{
         .doc = "Encode a signed integer as a varint, returns bytes.",
@@ -48,6 +50,45 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
     }),
     .encode_double = py.method(encodeDouble, .{
         .doc = "Encode a double value as 8 little-endian bytes.",
+    }),
+    .encode_packed_int32s = py.method(encodePackedInt32s, .{
+        .doc = "Encode packed int32 values.",
+    }),
+    .encode_packed_int64s = py.method(encodePackedInt64s, .{
+        .doc = "Encode packed int64 values.",
+    }),
+    .encode_packed_uint32s = py.method(encodePackedUint32s, .{
+        .doc = "Encode packed uint32 values.",
+    }),
+    .encode_packed_uint64s = py.method(encodePackedUint64s, .{
+        .doc = "Encode packed uint64 values.",
+    }),
+    .encode_packed_sint32s = py.method(encodePackedSint32s, .{
+        .doc = "Encode packed sint32 values.",
+    }),
+    .encode_packed_sint64s = py.method(encodePackedSint64s, .{
+        .doc = "Encode packed sint64 values.",
+    }),
+    .encode_packed_bools = py.method(encodePackedBools, .{
+        .doc = "Encode packed bool values.",
+    }),
+    .encode_packed_fixed32s = py.method(encodePackedFixed32s, .{
+        .doc = "Encode packed fixed32 values.",
+    }),
+    .encode_packed_sfixed32s = py.method(encodePackedSfixed32s, .{
+        .doc = "Encode packed sfixed32 values.",
+    }),
+    .encode_packed_floats = py.method(encodePackedFloats, .{
+        .doc = "Encode packed float values.",
+    }),
+    .encode_packed_fixed64s = py.method(encodePackedFixed64s, .{
+        .doc = "Encode packed fixed64 values.",
+    }),
+    .encode_packed_sfixed64s = py.method(encodePackedSfixed64s, .{
+        .doc = "Encode packed sfixed64 values.",
+    }),
+    .encode_packed_doubles = py.method(encodePackedDoubles, .{
+        .doc = "Encode packed double values.",
     }),
     .decode_fixed32 = py.method(decodeFixed32, .{
         .doc = "Decode a fixed32 from bytes at offset, returns (value, new_offset).",
@@ -133,7 +174,7 @@ pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/deco
 });
 
 fn encodeVarint(value: py.Object) !py.Bytes {
-    const parsed = try py.Long.fromObject(value);
+    const parsed: py.Long = try .fromObject(value);
     var buf: [wire.max_varint_len]u8 = undefined;
     const len = try switch (parsed) {
         .signed => |v| wire.encodeVarint(i64, v, &buf),
@@ -166,7 +207,7 @@ fn decodeVarint(data: py.Buffer, offset: usize) !py.Tuple {
 }
 
 fn tuple2(comptime T0: type, first: T0, comptime T1: type, second: T1) !py.Tuple {
-    var result = try py.Tuple.init(2);
+    var result: py.Tuple = try .init(2);
     errdefer result.deinit();
     try result.set(T0, 0, first);
     try result.set(T1, 1, second);
@@ -212,6 +253,83 @@ fn encodeDouble(value: f64) !py.Bytes {
     return .fromSlice(&buf);
 }
 
+fn encodePackedVarints(values: py.List, comptime kind: VarintKind) !py.Bytes {
+    const count = try values.len();
+    var out: Buffer = .empty;
+    defer out.deinit(py.allocator);
+    if (count > 0) try out.ensureTotalCapacity(py.allocator, count);
+
+    var buf: [wire.max_varint_len]u8 = undefined;
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const item = try values.get(i);
+        const len = try switch (kind) {
+            .int32, .int64 => blk: {
+                const parsed = try py.Long.fromObject(item);
+                break :blk switch (parsed) {
+                    .signed => |v| wire.encodeVarint(i64, v, &buf),
+                    .unsigned => |v| wire.encodeVarint(u64, v, &buf),
+                };
+            },
+            .uint32 => blk: {
+                const masked = try py.Long.unsignedMask(item);
+                const value: u64 = masked & 0xFFFF_FFFF;
+                break :blk wire.encodeVarint(u64, value, &buf);
+            },
+            .uint64 => blk: {
+                const masked = try py.Long.unsignedMask(item);
+                break :blk wire.encodeVarint(u64, masked, &buf);
+            },
+            .sint32 => blk: {
+                const value = try item.as(i64);
+                const encoded = wire.zigzagEncode(i64, value) & 0xFFFF_FFFF;
+                break :blk wire.encodeVarint(u64, encoded, &buf);
+            },
+            .sint64 => blk: {
+                const value = try item.as(i64);
+                const encoded = wire.zigzagEncode(i64, value);
+                break :blk wire.encodeVarint(u64, encoded, &buf);
+            },
+            .bool => blk: {
+                const value = try item.as(bool);
+                const encoded: u64 = if (value) 1 else 0;
+                break :blk wire.encodeVarint(u64, encoded, &buf);
+            },
+        };
+        try out.appendSlice(py.allocator, buf[0..len]);
+    }
+
+    return .fromSlice(out.items);
+}
+
+fn encodePackedInt32s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .int32);
+}
+
+fn encodePackedInt64s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .int64);
+}
+
+fn encodePackedUint32s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .uint32);
+}
+
+fn encodePackedUint64s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .uint64);
+}
+
+fn encodePackedSint32s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .sint32);
+}
+
+fn encodePackedSint64s(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .sint64);
+}
+
+fn encodePackedBools(values: py.List) !py.Bytes {
+    return encodePackedVarints(values, .bool);
+}
+
 fn decodeFixed32(data: py.Buffer, offset: usize) !py.Tuple {
     var buffer = data;
     defer buffer.release();
@@ -242,6 +360,99 @@ fn decodeFixed64(data: py.Buffer, offset: usize) !py.Tuple {
     const raw_ptr: *const [8]u8 = @ptrCast(raw.ptr);
     const value = wire.readInt(u64, raw_ptr);
     return tuple2(u64, value, usize, offset + 8);
+}
+
+const EncodeFixed32Kind = enum {
+    fixed32,
+    sfixed32,
+    float,
+};
+
+fn encodePackedFixed32(values: py.List, comptime kind: EncodeFixed32Kind) !py.Bytes {
+    const count = try values.len();
+    var out: Buffer = .empty;
+    defer out.deinit(py.allocator);
+    try out.resize(py.allocator, count * 4);
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const item = try values.get(i);
+        const start = i * 4;
+        const raw_ptr: *[4]u8 = @ptrCast(out.items[start .. start + 4].ptr);
+        switch (kind) {
+            .fixed32 => {
+                const masked = try py.Long.unsignedMask(item);
+                const value: u32 = @truncate(masked);
+                wire.writeInt(u32, raw_ptr, value);
+            },
+            .sfixed32 => {
+                const value = try item.as(i32);
+                wire.writeInt(i32, raw_ptr, value);
+            },
+            .float => {
+                const value = try item.as(f32);
+                wire.writeInt(u32, raw_ptr, @bitCast(value));
+            },
+        }
+    }
+    return .fromSlice(out.items);
+}
+
+fn encodePackedFixed32s(values: py.List) !py.Bytes {
+    return encodePackedFixed32(values, .fixed32);
+}
+
+fn encodePackedSfixed32s(values: py.List) !py.Bytes {
+    return encodePackedFixed32(values, .sfixed32);
+}
+
+fn encodePackedFloats(values: py.List) !py.Bytes {
+    return encodePackedFixed32(values, .float);
+}
+
+const EncodeFixed64Kind = enum {
+    fixed64,
+    sfixed64,
+    double,
+};
+
+fn encodePackedFixed64(values: py.List, comptime kind: EncodeFixed64Kind) !py.Bytes {
+    const count = try values.len();
+    var out: Buffer = .empty;
+    defer out.deinit(py.allocator);
+    try out.resize(py.allocator, count * 8);
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const item = try values.get(i);
+        const start = i * 8;
+        const raw_ptr: *[8]u8 = @ptrCast(out.items[start .. start + 8].ptr);
+        switch (kind) {
+            .fixed64 => {
+                const masked = try py.Long.unsignedMask(item);
+                wire.writeInt(u64, raw_ptr, masked);
+            },
+            .sfixed64 => {
+                const value = try item.as(i64);
+                wire.writeInt(i64, raw_ptr, value);
+            },
+            .double => {
+                const value = try item.as(f64);
+                wire.writeInt(u64, raw_ptr, @bitCast(value));
+            },
+        }
+    }
+    return .fromSlice(out.items);
+}
+
+fn encodePackedFixed64s(values: py.List) !py.Bytes {
+    return encodePackedFixed64(values, .fixed64);
+}
+
+fn encodePackedSfixed64s(values: py.List) !py.Bytes {
+    return encodePackedFixed64(values, .sfixed64);
+}
+
+fn encodePackedDoubles(values: py.List) !py.Bytes {
+    return encodePackedFixed64(values, .double);
 }
 
 fn skipField(data: py.Buffer, offset: usize) !?usize {
@@ -399,7 +610,7 @@ fn decodePackedVarints(data: py.Buffer, comptime kind: VarintKind) !py.List {
     var buffer = data;
     defer buffer.release();
     const slice = buffer.slice();
-    var list = try py.List.init(0);
+    var list: py.List = try .init(0);
     errdefer list.deinit();
     var offset: usize = 0;
     while (offset < slice.len) {
@@ -469,7 +680,7 @@ fn decodePackedFixed32(data: py.Buffer, comptime kind: Fixed32Kind) !py.List {
         .float => "packed float data length not a multiple of 4",
     });
     const count = slice.len / 4;
-    var list = try py.List.init(count);
+    var list: py.List = try .init(count);
     errdefer list.deinit();
     var i: usize = 0;
     while (i < count) : (i += 1) {
@@ -515,7 +726,7 @@ fn decodePackedFixed64(data: py.Buffer, comptime kind: Fixed64Kind) !py.List {
         .double => "packed double data length not a multiple of 8",
     });
     const count = slice.len / 8;
-    var list = try py.List.init(count);
+    var list: py.List = try .init(count);
     errdefer list.deinit();
     var i: usize = 0;
     while (i < count) : (i += 1) {

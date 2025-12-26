@@ -8,7 +8,6 @@ The Reader and Writer classes are reimplemented to use the native primitives.
 """
 
 import builtins
-import struct
 from collections.abc import Iterator
 
 try:
@@ -39,6 +38,19 @@ from fastproto._native import (
     encode_fixed32,
     encode_fixed64,
     encode_float,
+    encode_packed_bools,
+    encode_packed_doubles,
+    encode_packed_fixed32s,
+    encode_packed_fixed64s,
+    encode_packed_floats,
+    encode_packed_int32s,
+    encode_packed_int64s,
+    encode_packed_sfixed32s,
+    encode_packed_sfixed64s,
+    encode_packed_sint32s,
+    encode_packed_sint64s,
+    encode_packed_uint32s,
+    encode_packed_uint64s,
     encode_sfixed32,
     encode_sfixed64,
     encode_varint,
@@ -427,14 +439,11 @@ class Writer:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # type: ignore[no-untyped-def]
-        if exc_type is None and self._parent is not None:
-            assert self._field_num is not None
-            self._parent._write_tag(self._field_num, WireType.LEN)
-            self._parent._buffer.extend(encode_varint(len(self._buffer)))
-            self._parent._buffer.extend(self._buffer)
+        if exc_type is None:
+            self.end()
 
     def end(self) -> None:
-        """Explicitly end a nested message (alternative to context manager)."""
+        """Explicitly end a nested message."""
         if self._parent is not None:
             assert self._field_num is not None
             self._parent._write_tag(self._field_num, WireType.LEN)
@@ -445,9 +454,7 @@ class Writer:
         """Write packed repeated int32."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(v))
+        packed = encode_packed_int32s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -456,9 +463,7 @@ class Writer:
         """Write packed repeated int64."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(v))
+        packed = encode_packed_int64s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -467,9 +472,7 @@ class Writer:
         """Write packed repeated uint32."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(v & 0xFFFFFFFF))
+        packed = encode_packed_uint32s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -478,9 +481,7 @@ class Writer:
         """Write packed repeated uint64."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(v))
+        packed = encode_packed_uint64s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -489,9 +490,7 @@ class Writer:
         """Write packed repeated sint32."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(zigzag_encode(v) & 0xFFFFFFFF))
+        packed = encode_packed_sint32s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -500,9 +499,7 @@ class Writer:
         """Write packed repeated sint64."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(zigzag_encode(v)))
+        packed = encode_packed_sint64s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -511,9 +508,7 @@ class Writer:
         """Write packed repeated bool."""
         if not values:
             return
-        packed = bytearray()
-        for v in values:
-            packed.extend(encode_varint(1 if v else 0))
+        packed = encode_packed_bools(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -522,7 +517,7 @@ class Writer:
         """Write packed repeated fixed32."""
         if not values:
             return
-        packed = struct.pack(f"<{len(values)}I", *[v & 0xFFFFFFFF for v in values])
+        packed = encode_packed_fixed32s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -531,7 +526,7 @@ class Writer:
         """Write packed repeated sfixed32."""
         if not values:
             return
-        packed = struct.pack(f"<{len(values)}i", *values)
+        packed = encode_packed_sfixed32s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -540,7 +535,7 @@ class Writer:
         """Write packed repeated float."""
         if not values:
             return
-        packed = struct.pack(f"<{len(values)}f", *values)
+        packed = encode_packed_floats(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -549,9 +544,7 @@ class Writer:
         """Write packed repeated fixed64."""
         if not values:
             return
-        packed = struct.pack(
-            f"<{len(values)}Q", *[v & 0xFFFFFFFFFFFFFFFF for v in values]
-        )
+        packed = encode_packed_fixed64s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -560,7 +553,7 @@ class Writer:
         """Write packed repeated sfixed64."""
         if not values:
             return
-        packed = struct.pack(f"<{len(values)}q", *values)
+        packed = encode_packed_sfixed64s(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
@@ -569,7 +562,7 @@ class Writer:
         """Write packed repeated double."""
         if not values:
             return
-        packed = struct.pack(f"<{len(values)}d", *values)
+        packed = encode_packed_doubles(values)
         self._write_tag(field_number, WireType.LEN)
         self._buffer.extend(encode_varint(len(packed)))
         self._buffer.extend(packed)
