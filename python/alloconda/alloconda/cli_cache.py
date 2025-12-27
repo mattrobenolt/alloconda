@@ -9,6 +9,27 @@ from . import cli_output as out
 from .pbs import cache_root, list_cached_entries
 
 
+def get_directory_size(path: Path) -> int:
+    """Calculate total size of a directory in bytes."""
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+    except (OSError, PermissionError):
+        pass
+    return total
+
+
+def format_size(size_bytes: int) -> str:
+    """Format bytes as human-readable size."""
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+
 @click.group()
 def cache() -> None:
     """Manage cached python-build-standalone headers."""
@@ -48,13 +69,22 @@ def cache_list(cache_dir: Path | None) -> None:
     out.verbose_detail("cache directory", cache_dir)
 
     rows: list[list[str]] = []
+    total_size = 0
     for entry in entries:
         version = entry.version
         if entry.build_id:
             version = f"{version}+{entry.build_id}"
-        rows.append([version, entry.target, str(entry.include_dir)])
 
-    out.print_matrix(rows, headers=["Version", "Target", "Include Directory"])
+        # Calculate size of the entry's parent directory (contains all files)
+        entry_dir = entry.include_dir.parent.parent  # Go up to version dir
+        size_bytes = get_directory_size(entry_dir)
+        total_size += size_bytes
+        size_str = format_size(size_bytes)
+
+        rows.append([version, entry.target, size_str, str(entry.include_dir)])
+
+    out.print_matrix(rows, headers=["Version", "Target", "Size", "Include Directory"])
+    out.dim(f"\nTotal cache size: {format_size(total_size)}")
 
 
 @cache.command("clear")
