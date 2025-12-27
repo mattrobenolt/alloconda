@@ -4,12 +4,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
 import click
 import tomlkit
 from jinja2 import Environment, PackageLoader, StrictUndefined
+
+from . import cli_output as out
 
 DEFAULT_ALLOCONDA_URL = "git+https://github.com/mattrobenolt/alloconda?ref=main"
 FINGERPRINT_RE = re.compile(r"use this value: (0x[0-9a-fA-F]+)")
@@ -56,7 +59,8 @@ def is_url(value: str) -> bool:
 
 def save_alloconda_dependency(url: str, dest_dir: Path) -> None:
     cmd = ["zig", "fetch", "--save=alloconda", url]
-    click.echo(f"Running: {cmd}")
+    out.step("Fetching alloconda dependency")
+    out.verbose_cmd(cmd)
     try:
         subprocess.run(cmd, check=True, cwd=dest_dir)
     except subprocess.CalledProcessError as exc:
@@ -100,9 +104,21 @@ def render_template(name: str, context: dict[str, str]) -> str:
 
 def update_pyproject(pyproject_path: Path, package_dir: str) -> bool:
     if not pyproject_path.is_file():
-        return False
-    doc = tomlkit.parse(pyproject_path.read_text())
-    updated = False
+        doc = tomlkit.document()
+        updated = True  # Creating new file
+
+        # Create [project] section with basic metadata
+        project_name = Path(package_dir).name
+        project = tomlkit.table()
+        project.add("name", project_name)
+        project.add("version", "0.1.0")
+        project.add("description", "Add your description here")
+        project.add("requires-python", f">={sys.version_info.major}.{sys.version_info.minor}")
+        project.add("dependencies", [])
+        doc["project"] = project
+    else:
+        doc = tomlkit.parse(pyproject_path.read_text())
+        updated = False
 
     if "build-system" not in doc:
         build_system = tomlkit.table()
@@ -180,6 +196,11 @@ def init(
     package_name = normalize_name(inferred_name)
     module_name = module_name or f"_{package_name}"
 
+    out.section("Initializing alloconda project")
+    out.verbose_detail("package name", package_name)
+    out.verbose_detail("module name", module_name)
+    out.verbose_detail("destination", dest_dir)
+
     alloconda_dep = ""
     needs_fetch = False
     if is_url(alloconda_path):
@@ -223,9 +244,13 @@ def init(
     if update_pyproject(pyproject_path, f"python/{package_name}"):
         updated_pyproject = True
     if updated_pyproject:
-        click.echo(f"✓ Updated {dest_dir / 'pyproject.toml'}")
+        out.success(f"Updated {out.path_style('pyproject.toml')}")
 
-    click.echo(f"✓ Wrote {dest_dir / 'build.zig'}")
-    click.echo(f"✓ Wrote {dest_dir / 'build.zig.zon'}")
-    click.echo(f"✓ Wrote {dest_dir / 'src' / 'root.zig'}")
-    click.echo(f"✓ Wrote {dest_dir / 'python' / package_name / '__init__.py'}")
+    out.success(f"Wrote {out.path_style('build.zig')}")
+    out.success(f"Wrote {out.path_style('build.zig.zon')}")
+    out.success(f"Wrote {out.path_style('src/root.zig')}")
+    out.success(f"Wrote {out.path_style(f'python/{package_name}/__init__.py')}")
+
+    out.dim("\nNext steps:")
+    out.bullet(f"Run {out._style('alloconda develop', 'cyan')} to build and install in editable mode", indent=1)
+    out.bullet(f"Or run {out._style('alloconda build', 'cyan')} to build the extension", indent=1)

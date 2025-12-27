@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import resolve_pbs_target, resolve_platform_tag
 from .pbs import (
     cache_root,
@@ -55,6 +56,9 @@ def fetch(
     cache_dir = cache_root(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    out.verbose_detail("pbs_target", target)
+    out.verbose_detail("cache_dir", cache_dir)
+
     assets = fetch_release_assets()
     if all_versions:
         version_list = resolve_versions_for_target(assets, target)
@@ -63,14 +67,18 @@ def fetch(
     else:
         raise click.ClickException("Provide --version or --all")
 
+    out.section(f"Fetching Python headers for {target}")
+    out.dim(f"Cache: {cache_dir}\n")
+
     for version in version_list:
         entry = find_cached_entry(cache_dir, version, target)
         if entry and not force:
-            click.echo(
-                f"Cached {entry.version} ({entry.target}) at {entry.include_dir}"
-            )
+            out.dim(f"  Skipping {entry.version} (already cached)")
+            out.verbose_detail("include_dir", entry.include_dir)
             continue
 
+        out.step(f"Fetching Python {version}")
+        out.verbose_detail("target", target)
         asset = select_asset(assets, version, target)
         entry = fetch_and_extract(asset, cache_dir, force, show_progress=True)
-        click.echo(f"Fetched {entry.version} ({entry.target}) -> {entry.include_dir}")
+        out.success(f"Fetched {entry.version} → {out.path_style(entry.include_dir)}")

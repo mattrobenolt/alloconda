@@ -1,6 +1,7 @@
 import click
 
 from . import __version__
+from . import cli_output as out
 from .cli_build import build
 from .cli_cache import cache
 from .cli_develop import develop
@@ -13,7 +14,13 @@ from .cli_wheel_all import wheel_all
 
 @click.group()
 @click.version_option(__version__, prog_name="alloconda")
-def main() -> None:
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output with detailed debugging information",
+)
+def main(verbose: bool) -> None:
     """\b
       ▜ ▜          ▌
     ▀▌▐ ▐ ▛▌▛▘▛▌▛▌▛▌▀▌
@@ -21,7 +28,7 @@ def main() -> None:
 
     Alloconda CLI for Zig-based Python extensions.
     """
-    pass
+    out.set_verbose(verbose)
 
 
 main.add_command(build)

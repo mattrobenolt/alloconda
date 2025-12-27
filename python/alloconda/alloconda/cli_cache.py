@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .pbs import cache_root, list_cached_entries
 
 
@@ -22,7 +23,8 @@ def cache() -> None:
 )
 def cache_path(cache_dir: Path | None) -> None:
     """Print the PBS cache directory path."""
-    click.echo(cache_root(cache_dir))
+    path = cache_root(cache_dir)
+    out.info(f"Cache directory: {out.path_style(path)}")
 
 
 @cache.command("list")
@@ -39,26 +41,20 @@ def cache_list(cache_dir: Path | None) -> None:
 
     entries = list_cached_entries(cache_dir)
     if not entries:
-        click.echo(f"No cached headers in {cache_dir}")
+        out.info(f"No cached headers in {out.path_style(cache_dir)}")
         return
 
-    rows: list[tuple[str, str, str]] = []
+    out.section(f"Cached Python Headers ({len(entries)} entries)")
+    out.verbose_detail("cache directory", cache_dir)
+
+    rows: list[list[str]] = []
     for entry in entries:
         version = entry.version
         if entry.build_id:
             version = f"{version}+{entry.build_id}"
-        rows.append((version, entry.target, str(entry.include_dir)))
+        rows.append([version, entry.target, str(entry.include_dir)])
 
-    version_width = max(len("Version"), max(len(row[0]) for row in rows))
-    target_width = max(len("Target"), max(len(row[1]) for row in rows))
-
-    click.echo(
-        f"{'Version'.ljust(version_width)}  {'Target'.ljust(target_width)}  Include"
-    )
-    for version, target, include_dir in rows:
-        click.echo(
-            f"{version.ljust(version_width)}  {target.ljust(target_width)}  {include_dir}"
-        )
+    out.print_matrix(rows, headers=["Version", "Target", "Include Directory"])
 
 
 @cache.command("clear")
@@ -71,10 +67,11 @@ def cache_clear(cache_dir: Path | None) -> None:
     """Remove cached python-build-standalone headers."""
     cache_dir = cache_root(cache_dir)
     if not cache_dir.exists():
-        click.echo(f"No cache directory at {cache_dir}")
+        out.info(f"No cache directory at {out.path_style(cache_dir)}")
         return
     if not cache_dir.is_dir():
         raise click.ClickException(f"Cache path is not a directory: {cache_dir}")
 
+    out.verbose(f"Removing cache directory: {cache_dir}")
     shutil.rmtree(cache_dir)
-    click.echo(f"Cleared cache at {cache_dir}")
+    out.success(f"Cleared cache at {out.path_style(cache_dir)}")

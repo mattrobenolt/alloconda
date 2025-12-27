@@ -14,8 +14,9 @@ import tarfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-import click
 import httpx
+
+from . import cli_output as out
 
 PBS_SHA256SUMS_URL = "https://github.com/astral-sh/python-build-standalone/releases/latest/download/SHA256SUMS"
 PBS_DOWNLOAD_BASE = (
@@ -264,24 +265,39 @@ def fetch_and_extract(
 
 def download_asset(asset: PbsAsset, path: Path, show_progress: bool) -> None:
     """Download a PBS asset to the given path."""
-    click.echo(f"Downloading {asset.name}")
+    out.step(f"Downloading {asset.name}")
+    out.verbose_detail("url", asset.url)
+
     with httpx.stream("GET", asset.url, timeout=120.0, follow_redirects=True) as resp:
         resp.raise_for_status()
         total = resp.headers.get("Content-Length")
-        length = int(total) if total and total.isdigit() else None
+        length = int(total) if total and total.isdigit() else 0
+
+        if length > 0:
+            size_mb = length / (1024 * 1024)
+            out.verbose_detail("size", f"{size_mb:.1f} MB")
+
+        progress = None
+        if show_progress and length > 0:
+            # Convert bytes to MB for display
+            total_mb = length / (1024 * 1024)
+            progress = out.ProgressBar(int(total_mb), desc="Downloading")
+
         with path.open("wb") as f:
-            if show_progress:
-                with click.progressbar(
-                    length=length,
-                    label="  Progress",
-                    show_eta=True,
-                ) as bar:
-                    for chunk in resp.iter_bytes():
-                        f.write(chunk)
-                        bar.update(len(chunk))
-            else:
-                for chunk in resp.iter_bytes():
-                    f.write(chunk)
+            downloaded = 0
+            for chunk in resp.iter_bytes():
+                f.write(chunk)
+                if progress:
+                    downloaded += len(chunk)
+                    downloaded_mb = int(downloaded / (1024 * 1024))
+                    if downloaded_mb > progress.current:
+                        progress.update(downloaded_mb - progress.current)
+
+        if progress:
+            # Ensure we reach 100%
+            if progress.current < progress.total:
+                progress.update(progress.total - progress.current)
+            progress.finish()
 
 
 def verify_sha256(path: Path, expected: str, name: str) -> None:

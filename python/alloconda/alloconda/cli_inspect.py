@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import (
     detect_module_name,
     get_extension_suffix,
@@ -33,6 +34,8 @@ def inspect(
     if not wheel_list:
         raise click.ClickException("Provide one or more wheel paths.")
 
+    out.verbose(f"Inspecting {len(wheel_list)} wheel(s)")
+
     base: dict[str, object] = {"extension_suffix": get_extension_suffix()}
     results: list[dict[str, object]] = []
     for wheel_path in wheel_list:
@@ -54,7 +57,7 @@ def inspect(
     for index, data in enumerate(results):
         if index:
             click.echo()
-        print_human(data)
+        print_human(data, verify)
 
 
 @click.command("inspect-lib")
@@ -77,6 +80,7 @@ def inspect_lib(
     as_json: bool,
 ) -> None:
     """Inspect a built library and print derived metadata."""
+    out.verbose(f"Inspecting {len(lib_args) if lib_args else 1} library(ies)")
     libs = (
         [resolve_library_path(path) for path in lib_args]
         if lib_args
@@ -98,7 +102,7 @@ def inspect_lib(
     for index, data in enumerate(results):
         if index:
             click.echo()
-        print_human(data)
+        print_human(data, False)
 
 
 def inspect_library(
@@ -262,23 +266,46 @@ def parse_wheel_filename(filename: str) -> dict[str, str]:
     }
 
 
-def print_human(data: dict[str, object]) -> None:
-    click.echo(f"extension_suffix: {data['extension_suffix']}")
+def print_human(data: dict[str, object], verify: bool = False) -> None:
     if "wheel" in data:
-        click.echo(f"wheel: {data['wheel']}")
+        wheel_path = str(data['wheel'])
+        out.section(f"Wheel: {out.path_style(wheel_path)}")
+
+        out.key_value("Extension suffix", data['extension_suffix'])
+
         extension_files = data.get("extension_files")
         dist_info_files = data.get("dist_info_files")
         ext_count = len(extension_files) if isinstance(extension_files, list) else 0
         dist_count = len(dist_info_files) if isinstance(dist_info_files, list) else 0
-        click.echo(f"extension_files: {ext_count}")
-        click.echo(f"dist_info_files: {dist_count}")
+
+        out.key_value("Extension files", ext_count)
+        out.key_value("Dist-info files", dist_count)
+
+        if data.get("dist_info_dir"):
+            out.key_value("Dist-info directory", data['dist_info_dir'])
+
         if data.get("valid") is False:
             errors = data.get("errors")
             if isinstance(errors, list) and errors:
-                click.echo(f"validation_errors: {len(errors)}")
+                out.warning(f"Validation errors: {len(errors)}")
+                for error in errors:
+                    out.bullet(str(error), indent=1)
+        else:
+            out.success("Wheel is valid")
+
+        if out.is_verbose():
+            if isinstance(extension_files, list):
+                out.verbose("\nExtension files:")
+                for f in extension_files:
+                    out.bullet(str(f), indent=1)
+            if isinstance(dist_info_files, list):
+                out.verbose("\nDist-info files:")
+                for f in dist_info_files:
+                    out.bullet(str(f), indent=1)
         return
 
-    click.echo(f"library: {data.get('library')}")
-    click.echo(f"module_name: {data.get('module_name')}")
+    out.section(f"Library: {out.path_style(str(data.get('library')))}")
+    out.key_value("Extension suffix", data['extension_suffix'])
+    out.key_value("Module name", data.get('module_name'))
     if "package_dir" in data:
-        click.echo(f"package_dir: {data.get('package_dir')}")
+        out.key_value("Package directory", out.path_style(str(data.get('package_dir'))))

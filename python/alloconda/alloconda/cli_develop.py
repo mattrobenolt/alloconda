@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import (
     OPTIMIZE_CHOICES,
     config_bool,
@@ -105,14 +106,22 @@ def develop(
 
     has_uv = shutil.which("uv") is not None
     has_pip = importlib.util.find_spec("pip") is not None
+
+    out.verbose_detail("has uv", has_uv)
+    out.verbose_detail("has pip", has_pip)
+
     if use_uv or (not has_pip and has_uv):
+        installer = "uv pip"
         cmd = ["uv", "pip", "install", "-e", str(project_root)]
     elif has_pip:
+        installer = "pip"
         cmd = [sys.executable, "-m", "pip", "install", "-e", str(project_root)]
     else:
         raise click.ClickException(
             "pip is not available; install pip or re-run with --uv."
         )
+
+    out.step(f"Installing in editable mode with {installer}")
     if release:
         _add_config_setting(cmd, "release", True)
         _add_config_setting(cmd, "optimize", optimize)
@@ -133,8 +142,9 @@ def develop(
     for arg in pip_args:
         cmd.append(arg)
 
-    click.echo(f"Running: {cmd}")
+    out.verbose_cmd(cmd)
     subprocess.run(cmd, check=True, cwd=project_root)
+    out.success("Editable install complete")
 
 
 def _add_config_setting(cmd: list[str], key: str, value: object) -> None:

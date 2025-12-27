@@ -39,7 +39,7 @@ def test_cache_path_prints_location(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cache_cmd, ["path", "--cache-dir", str(tmp_path)])
     assert result.exit_code == 0, result.output
-    assert result.output.strip() == str(tmp_path)
+    assert str(tmp_path) in result.output
 
 
 def test_cache_list_empty(tmp_path: Path) -> None:
@@ -57,12 +57,11 @@ def test_cache_list_entries(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cache_cmd, ["list", "--cache-dir", str(cache_dir)])
     assert result.exit_code == 0, result.output
-    lines = result.output.strip().splitlines()
-    assert lines[0].startswith("Version")
-    assert any("3.13.1+20240101" in line for line in lines)
-    assert any("3.14.0+20240202" in line for line in lines)
-    assert any("x86_64-unknown-linux-gnu" in line for line in lines)
-    assert any("aarch64-apple-darwin" in line for line in lines)
+    assert "Cached Python Headers" in result.output
+    assert "3.13.1+20240101" in result.output
+    assert "3.14.0+20240202" in result.output
+    assert "x86_64-unknown-linux-gnu" in result.output
+    assert "aarch64-apple-darwin" in result.output
 
 
 def test_cache_clear_removes_directory(tmp_path: Path) -> None:

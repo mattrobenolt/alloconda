@@ -11,6 +11,16 @@ Alloconda is Zig-first Python extensions with cross-compiled wheels.
 - **Python**: 3.10 – 3.14
 - **Zig**: 0.15
 
+## Global Options
+
+Use `-v` or `--verbose` with any command for detailed debugging output:
+
+```bash
+alloconda -v build
+```
+
+Control color output with `NO_COLOR=1` or `FORCE_COLOR=1` environment variables.
+
 ## Commands
 
 ### `alloconda build`

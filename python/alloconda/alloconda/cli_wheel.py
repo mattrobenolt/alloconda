@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import (
     OPTIMIZE_CHOICES,
     config_bool,
@@ -92,7 +93,9 @@ def wheel(
     fetch: bool,
 ) -> None:
     """Build a single wheel for the current project."""
+    out.verbose("Starting wheel build")
     project_root = project_dir or find_project_dir(Path.cwd())
+    out.verbose_detail("project root", project_root or "(not found)")
     config = read_tool_alloconda(project_root, package_dir)
 
     module_name = module_name or config_value(config, "module-name")
@@ -156,4 +159,6 @@ def wheel(
         exclude=exclude,
         fetch=fetch,
     )
-    click.echo(f"✓ Built wheel {wheel_path}")
+    out.success(f"Built wheel: {out.path_style(wheel_path.name)}")
+    if out.is_verbose():
+        out.verbose_detail("full path", wheel_path)

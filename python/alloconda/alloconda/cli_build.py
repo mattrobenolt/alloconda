@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import (
     OPTIMIZE_CHOICES,
     build_extension,
@@ -54,8 +55,11 @@ def build(
     force_init: bool,
 ) -> None:
     """Build a Zig extension and install it into a package directory."""
+    out.verbose("Starting build command")
     project_root = find_project_dir(package_dir or Path.cwd())
     build_root = project_root or Path.cwd()
+    out.verbose_detail("project root", project_root or "(not found)")
+    out.verbose_detail("build root", build_root)
     config = read_tool_alloconda(project_root, package_dir)
 
     module_name = module_name or config_value(config, "module-name")
@@ -93,4 +97,6 @@ def build(
         force_init=force_init,
         workdir=build_root,
     )
-    click.echo(f"✓ Built {dst}")
+    out.success(f"Built extension: {out.path_style(dst.name)}")
+    if out.is_verbose():
+        out.verbose_detail("full path", dst)

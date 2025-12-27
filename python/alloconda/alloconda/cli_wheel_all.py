@@ -3,6 +3,7 @@ from pathlib import Path
 
 import click
 
+from . import cli_output as out
 from .cli_helpers import (
     OPTIMIZE_CHOICES,
     config_bool,
@@ -125,7 +126,9 @@ def wheel_all(
     force_init: bool,
 ) -> None:
     """Build a multi-platform wheel matrix from cached python headers."""
+    out.verbose("Starting wheel-all build")
     project_root = project_dir or find_project_dir(Path.cwd())
+    out.verbose_detail("project root", project_root or "(not found)")
     config = read_tool_alloconda(project_root, package_dir)
 
     if not versions and not all_versions:
@@ -193,53 +196,79 @@ def wheel_all(
             matrix.append((version, target, pbs_target))
 
     if dry_run:
+        out.section("Build Matrix (dry-run)")
+        rows = []
         for version, target, pbs_target in matrix:
-            click.echo(
-                f"{version} -> {target.platform_tag} (pbs {pbs_target}, arch {target.arch})"
-            )
+            rows.append([version, target.platform_tag, pbs_target, target.arch])
+        out.print_matrix(rows, headers=["Python", "Platform", "PBS Target", "Arch"])
+        out.dim(f"\nTotal: {len(matrix)} wheels")
         return
 
-    for version, target, pbs_target in matrix:
-        cached = find_cached_entry(cache_dir, version, pbs_target)
-        if cached is None:
-            if not fetch:
-                raise click.ClickException(
-                    "Python headers not cached. Re-run with --fetch or "
-                    f"alloconda python fetch --version {version} --pbs-target {pbs_target}"
-                )
-            asset = select_asset(assets, version, pbs_target)
-            fetch_and_extract(asset, cache_dir, force=False, show_progress=True)
+    out.section(f"Building {len(matrix)} wheels")
 
-        zig_target = zig_target_for(target)
-        wheel_path = build_wheel(
-            release=release,
-            optimize=optimize,
-            zig_target=zig_target,
-            lib_path=None,
-            module_name=module_name,
-            package_dir=package_dir,
-            python_version=version,
-            pbs_target=pbs_target,
-            python_cache=cache_dir,
-            ext_suffix=None,
-            out_dir=out_dir,
-            project_dir=project_dir,
-            python_tag=None,
-            abi_tag=None,
-            platform_tag=None
-            if target.manylinux or target.musllinux
-            else target.platform_tag,
-            manylinux=target.manylinux,
-            musllinux=target.musllinux,
-            arch=resolve_arch(target.arch),
-            build_step=build_step,
-            no_init=no_init,
-            force_init=force_init,
-            skip_build=False,
-            include=include,
-            exclude=exclude,
-        )
-        click.echo(f"✓ Built {wheel_path}")
+    with out.LiveStatus(len(matrix), desc="Building") as status:
+        for idx, (version, target, pbs_target) in enumerate(matrix, 1):
+            # In verbose mode, show more details without overwriting
+            if out.is_verbose():
+                out.verbose(f"[{idx}/{len(matrix)}] Processing Python {version} → {target.platform_tag}")
+                out.verbose_detail("pbs_target", pbs_target)
+                out.verbose_detail("arch", target.arch)
+
+            # Show ephemeral status of what we're building
+            status_lines = [f"{out._style('→', 'cyan')} [{idx}/{len(matrix)}] Python {version} → {target.platform_tag}"]
+            status.update(status_lines)
+
+            cached = find_cached_entry(cache_dir, version, pbs_target)
+            if cached is None:
+                if not fetch:
+                    raise click.ClickException(
+                        "Python headers not cached. Re-run with --fetch or "
+                        f"alloconda python fetch --version {version} --pbs-target {pbs_target}"
+                    )
+                if out.is_verbose():
+                    out.verbose(f"Fetching headers for {version} / {pbs_target}")
+                asset = select_asset(assets, version, pbs_target)
+                fetch_and_extract(asset, cache_dir, force=False, show_progress=True)
+            else:
+                if out.is_verbose():
+                    out.verbose(f"Using cached headers: {cached}")
+
+            zig_target = zig_target_for(target)
+            wheel_path = build_wheel(
+                release=release,
+                optimize=optimize,
+                zig_target=zig_target,
+                lib_path=None,
+                module_name=module_name,
+                package_dir=package_dir,
+                python_version=version,
+                pbs_target=pbs_target,
+                python_cache=cache_dir,
+                ext_suffix=None,
+                out_dir=out_dir,
+                project_dir=project_dir,
+                python_tag=None,
+                abi_tag=None,
+                platform_tag=None
+                if target.manylinux or target.musllinux
+                else target.platform_tag,
+                manylinux=target.manylinux,
+                musllinux=target.musllinux,
+                arch=resolve_arch(target.arch),
+                build_step=build_step,
+                no_init=no_init,
+                force_init=force_init,
+                skip_build=False,
+                include=include,
+                exclude=exclude,
+            )
+
+            # Print persistent success message and update progress
+            success_msg = f"{out._style('✓', 'green', bold=True)} Built {out.path_style(wheel_path.name)}"
+            status.persist(success_msg)
+
+    out.section("Build complete")
+    out.success(f"Built {len(matrix)} wheels in {out.path_style(out_dir or 'dist/')}")
 
 
 def parse_target(value: str) -> WheelTarget:
