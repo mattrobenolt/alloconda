@@ -54,6 +54,9 @@ def cache_root(explicit: Path | None) -> Path:
     env_value = os.environ.get(PBS_CACHE_ENV)
     if env_value:
         return Path(env_value)
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache:
+        return Path(xdg_cache) / "alloconda" / "pbs"
     return Path.home() / ".cache" / "alloconda" / "pbs"
 
 
@@ -423,6 +426,29 @@ def find_cached_entry(
 
     candidates.sort(key=lambda e: parse_version_parts(e.version))
     return candidates[-1]
+
+
+def list_cached_entries(cache_dir: Path) -> list[PbsEntry]:
+    """List all cached entries in the PBS cache directory."""
+    if not cache_dir.is_dir():
+        return []
+
+    entries: list[PbsEntry] = []
+    for target_dir in sorted(
+        [path for path in cache_dir.iterdir() if path.is_dir()],
+        key=lambda path: path.name,
+    ):
+        for version_dir in sorted(
+            [path for path in target_dir.iterdir() if path.is_dir()],
+            key=lambda path: parse_version_parts(path.name),
+        ):
+            meta = version_dir / "metadata.json"
+            if not meta.is_file():
+                continue
+            entries.append(load_entry(meta))
+
+    entries.sort(key=lambda entry: (entry.target, parse_version_parts(entry.version)))
+    return entries
 
 
 def resolve_versions_for_target(assets: list[PbsAsset], target: str) -> list[str]:

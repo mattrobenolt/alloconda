@@ -132,7 +132,21 @@ Fetch and cache python-build-standalone headers for cross builds.
 uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
-The cache location can be overridden with `ALLOCONDA_PBS_CACHE` or `--cache-dir`.
+The cache location follows `XDG_CACHE_HOME` (fallback `~/.cache/alloconda/pbs`) and can
+be overridden with `ALLOCONDA_PBS_CACHE` or `--cache-dir`.
+
+### `alloconda cache`
+
+Inspect and clear the python-build-standalone header cache.
+
+```bash
+uvx alloconda cache list
+uvx alloconda cache path
+uvx alloconda cache clear
+```
+
+These commands share the same cache root as `alloconda python fetch` and can be
+overridden with `ALLOCONDA_PBS_CACHE` or `--cache-dir`.
 
 ## Build backend
 

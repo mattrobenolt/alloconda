@@ -69,6 +69,16 @@ uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
 This caches python-build-standalone headers for cross compilation.
+The cache root follows `XDG_CACHE_HOME` (fallback `~/.cache/alloconda/pbs`) and can
+be overridden with `ALLOCONDA_PBS_CACHE` or `--cache-dir`.
+
+To inspect or clear the header cache:
+
+```bash
+uvx alloconda cache list
+uvx alloconda cache path
+uvx alloconda cache clear
+```
 
 ## Cross-compilation guide
 

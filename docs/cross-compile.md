@@ -19,10 +19,20 @@ For cross builds, fetch headers for the target Python version and platform:
 uvx alloconda python fetch --version 3.14 --manylinux 2_28 --arch x86_64
 ```
 
-The headers are cached locally and reused across builds.
+The headers are cached locally and reused across builds. The cache root follows
+`XDG_CACHE_HOME` (fallback `~/.cache/alloconda/pbs`) and can be overridden with
+`ALLOCONDA_PBS_CACHE` or `--cache-dir`.
 
 Both `wheel` and `wheel-all` fetch missing headers automatically; use `--no-fetch`
 to disable network access.
+
+Use the cache helper commands to inspect or clear cached headers:
+
+```bash
+uvx alloconda cache list
+uvx alloconda cache path
+uvx alloconda cache clear
+```
 
 ## Build a single cross-target wheel
 
