@@ -11,7 +11,7 @@ const py = @import("alloconda");
 
 const Buffer = std.ArrayList(u8);
 
-pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/decoding.", .{
+pub const MODULE = py.module("Fast protobuf wire format encoding/decoding.", .{
     .encode_varint = py.function(encodeVarint, .{
         .doc = "Encode a signed integer as a varint, returns bytes.",
     }),

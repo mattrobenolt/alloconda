@@ -75,10 +75,10 @@ publish:
 
 clean:
     fd -HI .wheeltest -t d -x rm -r
+    fd -HI zig-out -t d -x rm -r
+    fd -HI .zig-cache -t d -x rm -r
+    fd -HI dist -t d -x rm -r
     rm -rf .venv/
-    rm -rf dist/
-    rm -rf zig-out/
-    rm -rf .zig-cache/
     rm -rf python/hello_alloconda
 
 hello:

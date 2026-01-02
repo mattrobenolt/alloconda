@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
 
     // Python extension library
     const lib = alloconda_build.addPythonLibrary(b, .{
-        .name = "fastproto",
+        .name = "_native",
         .root_module = bindings,
     });
     const lib_install = b.addInstallArtifact(lib, .{});

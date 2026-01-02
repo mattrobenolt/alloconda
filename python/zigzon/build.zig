@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const lib = alloconda_build.addPythonLibrary(b, .{
-        .name = "zigzon",
+        .name = "_zigzon",
         .root_module = mod,
     });
     b.installArtifact(lib);

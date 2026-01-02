@@ -1,5 +1,37 @@
 const std = @import("std");
 
+var module_name_options: ?*std.Build.Step.Options = null;
+var module_name_value: ?[]const u8 = null;
+
+fn allocondaBuildOptions(b: *std.Build) *std.Build.Step.Options {
+    if (module_name_options) |options| return options;
+    const options = b.addOptions();
+    module_name_options = options;
+    return options;
+}
+
+fn ensureAllocondaOptions(b: *std.Build, mod: *std.Build.Module) *std.Build.Step.Options {
+    const options = allocondaBuildOptions(b);
+    if (mod.import_table.get("alloconda_build_options") == null) {
+        mod.addOptions("alloconda_build_options", options);
+    }
+    return options;
+}
+
+fn setModuleNameOption(options: *std.Build.Step.Options, name: []const u8) void {
+    if (module_name_value) |value| {
+        if (!std.mem.eql(u8, value, name)) {
+            @panic(
+                "alloconda: module name already set; " ++
+                    "multiple addPythonLibrary calls need distinct alloconda modules",
+            );
+        }
+        return;
+    }
+    module_name_value = name;
+    options.addOption([]const u8, "module_name", name);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -51,6 +83,8 @@ pub fn addPythonLibrary(b: *std.Build, options: LibraryOptions) *std.Build.Step.
     // Also add include path to the alloconda module if it's imported
     if (user_module.import_table.get("alloconda")) |alloc_mod| {
         alloc_mod.addSystemIncludePath(python.include_path);
+        const alloc_options = ensureAllocondaOptions(b, alloc_mod);
+        setModuleNameOption(alloc_options, options.name);
     }
 
     const entry_source = @embedFile("build/alloconda_entry.zig");

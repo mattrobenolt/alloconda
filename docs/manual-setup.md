@@ -88,7 +88,7 @@ pub fn build(b: *std.Build) void {
 
     // Build the Python extension library
     const lib = alloconda_build.addPythonLibrary(b, .{
-        .name = "mypackage",
+        .name = "_native",
         .root_module = bindings,
     });
     b.installArtifact(lib);
@@ -113,7 +113,7 @@ Python module definition:
 const py = @import("alloconda");
 const mylib = @import("mylib");
 
-pub const MODULE = py.module("_native", "My module description.", .{
+pub const MODULE = py.module("My module description.", .{
     .some_function = py.function(someFunction, .{
         .doc = "Function documentation.",
     }),
@@ -124,9 +124,9 @@ fn someFunction(arg: i64) i64 {
 }
 ```
 
-The module name (first argument to `py.module`) should match what your Python
-`__init__.py` imports. A leading underscore (e.g., `_native`) is conventional
-for extension modules.
+The module name comes from `addPythonLibrary(.name=...)` and should match what
+your Python `__init__.py` imports. A leading underscore (e.g., `_native`) is
+conventional for extension modules.
 
 ## Step 5: Update Python __init__.py
 

@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const alloconda_build = @import("alloconda");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -16,8 +18,8 @@ pub fn build(b: *std.Build) void {
     });
     mod.addImport("alloconda", alloconda.module("alloconda"));
 
-    const lib = @import("alloconda").addPythonLibrary(b, .{
-        .name = "{{ package_name }}",
+    const lib = alloconda_build.addPythonLibrary(b, .{
+        .name = "{{ module_name }}",
         .root_module = mod,
     });
     b.installArtifact(lib);

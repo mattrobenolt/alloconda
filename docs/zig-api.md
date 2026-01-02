@@ -18,7 +18,7 @@ Export a single module definition named `MODULE`:
 ```zig
 const py = @import("alloconda");
 
-pub const MODULE = py.module("_hello_alloconda", "Example module", .{
+pub const MODULE = py.module("Example module", .{
     .hello = py.function(hello, .{}),
 });
 
@@ -26,6 +26,8 @@ fn hello(name: []const u8) []const u8 {
     return name;
 }
 ```
+
+The module name comes from `addPythonLibrary(.name=...)`.
 
 ## Module attributes
 
@@ -35,7 +37,7 @@ Attach constants to the module with `withAttrs`:
 const VERSION: []const u8 = "0.1.0";
 const DEFAULT_SIZE: i64 = 256;
 
-pub const MODULE = py.module("_hello_alloconda", "Example module", .{
+pub const MODULE = py.module("Example module", .{
     .hello = py.function(hello, .{}),
 }).withAttrs(.{
     .VERSION = VERSION,
@@ -69,7 +71,7 @@ const Greeter = py.class("Greeter", "A tiny class", .{
     .hello = py.method(hello, .{}),
 });
 
-pub const MODULE = py.module("_hello_alloconda", "Example module", .{})
+pub const MODULE = py.module("Example module", .{})
     .withTypes(.{ .Greeter = Greeter });
 
 fn hello(_: py.Object, name: []const u8) []const u8 {

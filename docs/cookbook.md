@@ -11,7 +11,7 @@ const Greeter = py.class("Greeter", "A tiny class", .{
     .hello = py.method(hello, .{}),
 });
 
-pub const MODULE = py.module("_example", "Example module", .{})
+pub const MODULE = py.module("Example module", .{})
     .withTypes(.{ .Greeter = Greeter });
 
 fn hello(_: py.Object, name: []const u8) []const u8 {

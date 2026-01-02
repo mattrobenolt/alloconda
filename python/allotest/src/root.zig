@@ -12,7 +12,7 @@ const py = @import("alloconda");
 // Module Definition
 // ============================================================================
 
-pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
+pub const MODULE = py.module("Alloconda test suite module.", .{
     // Basic function binding
     .add = py.function(add, .{ .doc = "Add two integers" }),
     .add3 = py.function(add3, .{ .doc = "Add two or three integers" }),

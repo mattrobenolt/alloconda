@@ -17,7 +17,7 @@ const ZonDocument = py.class("ZonDocument", "Small helper for stored ZON text/va
     .dumps = py.method(docDumps, .{}),
 });
 
-pub const MODULE = py.module("_zigzon", "ZON codec implemented in Zig.", .{
+pub const MODULE = py.module("ZON codec implemented in Zig.", .{
     .loads = py.function(loads, .{
         .doc = "Parse ZON text into Python objects.",
         .args = &.{"data"},

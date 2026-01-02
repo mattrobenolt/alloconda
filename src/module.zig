@@ -167,13 +167,24 @@ pub const Module = struct {
     }
 };
 
+fn moduleName() []const u8 {
+    const options = @import("alloconda_build_options");
+    if (!@hasDecl(options, "module_name")) {
+        @compileError("Module name not set. Set .name in addPythonLibrary.");
+    }
+    const name = options.module_name;
+    if (name.len == 0) {
+        @compileError("Module name cannot be empty. Set .name in addPythonLibrary.");
+    }
+    return name;
+}
+
 /// Convenience module builder.
 pub fn module(
-    comptime name: [:0]const u8,
     comptime doc: [:0]const u8,
     comptime methods: anytype,
 ) Module {
-    return Module.init(name, doc).with(methods);
+    return Module.init(moduleName(), doc).with(methods);
 }
 
 // ============================================================================

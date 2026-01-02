@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
     mod.addImport("alloconda", alloconda.module("alloconda"));
 
     const lib = @import("alloconda").addPythonLibrary(b, .{
-        .name = "allotest",
+        .name = "_allotest",
         .root_module = mod,
     });
     b.installArtifact(lib);
