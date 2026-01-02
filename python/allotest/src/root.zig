@@ -108,6 +108,7 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .Adder = Adder,
     .Counter = Counter,
     .MethodKinds = MethodKinds,
+    .CallableAdder = CallableAdder,
 });
 
 const MODULE_VERSION: []const u8 = "0.1.0";
@@ -608,4 +609,14 @@ fn methodkinds_class_name(cls: py.Object) ![]const u8 {
 
 fn methodkinds_sum(a: i64, b: i64) i64 {
     return a + b;
+}
+
+// Callable class for __call__ testing
+const CallableAdder = py.class("CallableAdder", "Callable class for __call__ testing.", .{
+    .__call__ = py.method(callable_add, .{ .doc = "Add value with optional extra", .args = &.{ "value", "extra" } }),
+});
+
+fn callable_add(self: py.Object, value: i64, extra: ?i64) i64 {
+    _ = self;
+    return value + (extra orelse 0);
 }

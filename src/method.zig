@@ -120,6 +120,24 @@ pub fn buildMethodDefs(comptime methods: anytype) [methodCount(methods) + 1]c.Py
     return defs;
 }
 
+/// Build a tp_call slot for a __call__ method spec.
+pub fn callSlotFromSpec(
+    comptime Func: type,
+    comptime kind: MethodKind,
+    comptime spec: MethodSpec(Func, kind),
+) ?*anyopaque {
+    if (kind != .instance) {
+        @compileError("__call__ must be defined with alloconda.method");
+    }
+
+    const func = spec.func;
+    const options = spec.options;
+    validateArgNames(func, options.args, true);
+
+    const Wrapper = CallWrapperType(func, options.args, true);
+    return @ptrCast(@constCast(&Wrapper.call));
+}
+
 fn buildMethodDef(
     comptime field_name: []const u8,
     comptime Func: type,
@@ -142,6 +160,44 @@ fn buildMethodDef(
         .ml_meth = @ptrCast(&Wrapper.call),
         .ml_flags = methodFlags(func, options.args, kind),
         .ml_doc = cPtr(options.doc),
+    };
+}
+
+fn CallWrapperType(
+    comptime func: anytype,
+    comptime arg_names: ?[]const [:0]const u8,
+    comptime include_self: bool,
+) type {
+    return struct {
+        fn call(
+            self: ?*c.PyObject,
+            args: ?*c.PyObject,
+            kwargs: ?*c.PyObject,
+        ) callconv(.c) ?*c.PyObject {
+            if (arg_names) |names| {
+                return callImplKw(func, self, args, kwargs, names, include_self) catch |err| {
+                    errors.setPythonError(err);
+                    return null;
+                };
+            }
+
+            if (kwargs) |kw| {
+                var pos: c.Py_ssize_t = 0;
+                if (PyDict.next(kw, &pos)) |entry| {
+                    const key_slice = PyUnicode.slice(entry.key) catch |err| {
+                        errors.setPythonError(err);
+                        return null;
+                    };
+                    errors.setPythonError(setUnexpectedKeywordError(key_slice));
+                    return null;
+                }
+            }
+
+            return callImpl(func, self, args, include_self) catch |err| {
+                errors.setPythonError(err);
+                return null;
+            };
+        }
     };
 }
 

@@ -205,6 +205,16 @@ class TestClassAndStaticMethods:
         assert allotest.MethodKinds().sum(2, 3) == 5
 
 
+class TestCallableClasses:
+    def test_call_positional(self) -> None:
+        adder = allotest.CallableAdder()
+        assert adder(10) == 10
+
+    def test_call_keyword(self) -> None:
+        adder = allotest.CallableAdder()
+        assert adder(value=4, extra=6) == 10
+
+
 class TestClassGC:
     """Test garbage collection of class instances."""
 

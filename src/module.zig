@@ -17,6 +17,7 @@ const PyManagedDict = ffi.PyManagedDict;
 const PyGC = ffi.PyGC;
 const method_mod = @import("method.zig");
 const buildMethodDefs = method_mod.buildMethodDefs;
+const callSlotFromSpec = method_mod.callSlotFromSpec;
 const py_types = @import("types.zig");
 const toPy = py_types.toPy;
 
@@ -266,7 +267,8 @@ pub fn class(
 ) Class {
     const defs = comptime buildMethodDefs(methods);
     const methods_ptr: ?*anyopaque = @ptrCast(@constCast(&defs));
-    const slots = classSlots(methods_ptr, doc);
+    const call_slot = comptime findCallSlot(methods);
+    const slots = classSlots(methods_ptr, doc, call_slot);
 
     return .{
         .name = name,
@@ -279,6 +281,7 @@ pub fn class(
 fn classSlots(
     comptime methods_ptr: ?*anyopaque,
     comptime doc: ?[:0]const u8,
+    comptime call_slot: ?*anyopaque,
 ) [*c]const c.PyType_Slot {
     // For Python 3.12+, use managed dict with GC support.
     // For older Python (3.10, 3.11), use tp_dictoffset for __dict__ support.
@@ -304,6 +307,19 @@ fn classSlots(
 
     if (doc) |doc_text| {
         if (use_gc) {
+            if (call_slot) |call_fn| {
+                return @ptrCast(&[_]c.PyType_Slot{
+                    .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+                    .{ .slot = c.Py_tp_call, .pfunc = call_fn },
+                    .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+                    .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+                    .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
+                    .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
+                    .{ .slot = c.Py_tp_free, .pfunc = free_fn },
+                    .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
+                    .{ .slot = 0, .pfunc = null },
+                });
+            }
             return @ptrCast(&[_]c.PyType_Slot{
                 .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
                 .{ .slot = c.Py_tp_new, .pfunc = new_fn },
@@ -318,6 +334,16 @@ fn classSlots(
         // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
         // NOTE: We intentionally omit Py_tp_doc for non-GC types because Python
         // tries to free() the tp_doc string on heap types, which crashes with static strings.
+        if (call_slot) |call_fn| {
+            return @ptrCast(&[_]c.PyType_Slot{
+                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+                .{ .slot = c.Py_tp_call, .pfunc = call_fn },
+                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+                .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
+                .{ .slot = 0, .pfunc = null },
+            });
+        }
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
             .{ .slot = c.Py_tp_new, .pfunc = new_fn },
@@ -328,6 +354,18 @@ fn classSlots(
     }
 
     if (use_gc) {
+        if (call_slot) |call_fn| {
+            return @ptrCast(&[_]c.PyType_Slot{
+                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+                .{ .slot = c.Py_tp_call, .pfunc = call_fn },
+                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+                .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
+                .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
+                .{ .slot = c.Py_tp_free, .pfunc = free_fn },
+                .{ .slot = 0, .pfunc = null },
+            });
+        }
         return @ptrCast(&[_]c.PyType_Slot{
             .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
             .{ .slot = c.Py_tp_new, .pfunc = new_fn },
@@ -339,6 +377,16 @@ fn classSlots(
         });
     }
     // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
+    if (call_slot) |call_fn| {
+        return @ptrCast(&[_]c.PyType_Slot{
+            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
+            .{ .slot = c.Py_tp_call, .pfunc = call_fn },
+            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
+            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
+            .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
+            .{ .slot = 0, .pfunc = null },
+        });
+    }
     return @ptrCast(&[_]c.PyType_Slot{
         .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
         .{ .slot = c.Py_tp_new, .pfunc = new_fn },
@@ -346,6 +394,24 @@ fn classSlots(
         .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
         .{ .slot = 0, .pfunc = null },
     });
+}
+
+fn findCallSlot(comptime methods: anytype) ?*anyopaque {
+    const info = @typeInfo(@TypeOf(methods));
+    if (info != .@"struct") {
+        @compileError("methods must be a struct literal");
+    }
+
+    const fields = info.@"struct".fields;
+    inline for (fields) |field| {
+        if (mem.eql(u8, field.name, "__call__")) {
+            const spec = @field(methods, field.name);
+            const Func = @TypeOf(spec.func);
+            const kind = @TypeOf(spec).kind;
+            return callSlotFromSpec(Func, kind, spec);
+        }
+    }
+    return null;
 }
 
 fn classFlags() c_uint {

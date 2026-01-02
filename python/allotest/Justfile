@@ -24,6 +24,9 @@ wheel:
 test:
     pytest -v tests
 
+test-all:
+    wheeltest allotest
+
 clean:
     rm -rf zig-out
     rm -rf dist
