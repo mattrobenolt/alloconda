@@ -719,7 +719,7 @@ fn subscript_set(self: py.Object, key: []const u8, value: i64) !void {
         return dict.setItem([]const u8, key, i64, value);
     };
     defer store_obj.deinit();
-    const store = try py.Dict.fromObject(store_obj);
+    const store: py.Dict = try .fromObject(store_obj);
     try store.setItem([]const u8, key, i64, value);
 }
 
@@ -829,62 +829,46 @@ fn number_mul(self: py.Object, factor: i64) !i64 {
 }
 
 fn number_truediv(self: py.Object, divisor: f64) !f64 {
-    if (divisor == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (divisor == 0) return py.raise(.ZeroDivisionError, "division by zero");
     return @as(f64, @floatFromInt(try number_value(self))) / divisor;
 }
 
 fn number_floordiv(self: py.Object, divisor: i64) !i64 {
-    if (divisor == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (divisor == 0) return py.raise(.ZeroDivisionError, "division by zero");
     return @divFloor(try number_value(self), divisor);
 }
 
 fn number_mod(self: py.Object, divisor: i64) !i64 {
-    if (divisor == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (divisor == 0) return py.raise(.ZeroDivisionError, "division by zero");
     return @mod(try number_value(self), divisor);
 }
 
 fn number_pow(self: py.Object, exponent: i64, mod: ?i64) !i64 {
-    if (exponent < 0) {
-        return py.raise(.ValueError, "negative exponent");
-    }
+    if (exponent < 0) return py.raise(.ValueError, "negative exponent");
     var result: i64 = 1;
     var base: i64 = try number_value(self);
     var exp: i64 = exponent;
 
     if (mod) |modulus| {
-        if (modulus == 0) {
-            return py.raise(.ZeroDivisionError, "pow() modulus is zero");
-        }
+        if (modulus == 0) return py.raise(.ZeroDivisionError, "pow() modulus is zero");
         base = @mod(base, modulus);
         result = @mod(result, modulus);
         while (exp > 0) : (exp >>= 1) {
-            if ((exp & 1) != 0) {
-                result = @mod(result * base, modulus);
-            }
+            if ((exp & 1) != 0) result = @mod(result * base, modulus);
             base = @mod(base * base, modulus);
         }
         return result;
     }
 
     while (exp > 0) : (exp >>= 1) {
-        if ((exp & 1) != 0) {
-            result *= base;
-        }
+        if ((exp & 1) != 0) result *= base;
         base *= base;
     }
     return result;
 }
 
 fn number_divmod(self: py.Object, divisor: i64) !py.Tuple {
-    if (divisor == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (divisor == 0) return py.raise(.ZeroDivisionError, "division by zero");
     const value: i64 = try number_value(self);
     const quotient: i64 = @divFloor(value, divisor);
     const remainder: i64 = @mod(value, divisor);
@@ -932,23 +916,15 @@ fn number_xor(self: py.Object, other: i64) !i64 {
 }
 
 fn number_lshift(self: py.Object, amount: i64) !i64 {
-    if (amount < 0) {
-        return py.raise(.ValueError, "negative shift count");
-    }
-    if (amount > 63) {
-        return py.raise(.OverflowError, "shift count out of range");
-    }
+    if (amount < 0) return py.raise(.ValueError, "negative shift count");
+    if (amount > 63) return py.raise(.OverflowError, "shift count out of range");
     const shift: u6 = @intCast(amount);
     return (try number_value(self)) << shift;
 }
 
 fn number_rshift(self: py.Object, amount: i64) !i64 {
-    if (amount < 0) {
-        return py.raise(.ValueError, "negative shift count");
-    }
-    if (amount > 63) {
-        return py.raise(.OverflowError, "shift count out of range");
-    }
+    if (amount < 0) return py.raise(.ValueError, "negative shift count");
+    if (amount > 63) return py.raise(.OverflowError, "shift count out of range");
     const shift: u6 = @intCast(amount);
     return (try number_value(self)) >> shift;
 }
@@ -988,27 +964,21 @@ fn number_imul(self: py.Object, other: i64) !py.Object {
 }
 
 fn number_itruediv(self: py.Object, other: i64) !py.Object {
-    if (other == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (other == 0) return py.raise(.ZeroDivisionError, "division by zero");
     const next: i64 = @divTrunc(try number_value(self), other);
     try set_number_value(self, next);
     return self.incref();
 }
 
 fn number_ifloordiv(self: py.Object, other: i64) !py.Object {
-    if (other == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (other == 0) return py.raise(.ZeroDivisionError, "division by zero");
     const next: i64 = @divFloor(try number_value(self), other);
     try set_number_value(self, next);
     return self.incref();
 }
 
 fn number_imod(self: py.Object, other: i64) !py.Object {
-    if (other == 0) {
-        return py.raise(.ZeroDivisionError, "division by zero");
-    }
+    if (other == 0) return py.raise(.ZeroDivisionError, "division by zero");
     const next: i64 = @mod(try number_value(self), other);
     try set_number_value(self, next);
     return self.incref();
@@ -1100,9 +1070,7 @@ fn itercounter_next(self: py.Object) !i64 {
         current = try current_obj.as(i64);
     }
 
-    if (current >= limit) {
-        return py.raise(.StopIteration, "iteration complete");
-    }
+    if (current >= limit) return py.raise(.StopIteration, "iteration complete");
 
     try self.setAttr("current", i64, current + 1);
     return current;
@@ -1180,19 +1148,15 @@ const DescriptorBox = py.class("DescriptorBox", "Class for __get__/__set__/__del
 fn descriptor_get(self: py.Object, obj: ?py.Object, owner: ?py.Object) !py.Object {
     _ = owner;
     if (obj == null) return self.incref();
-    if (try self.getAttrOrNull("_value")) |value_obj| {
-        return value_obj;
-    }
+    if (try self.getAttrOrNull("_value")) |value_obj| return value_obj;
     return .from([]const u8, "unset");
 }
 
-fn descriptor_set(self: py.Object, obj: py.Object, value: py.Object) !void {
-    _ = obj;
+fn descriptor_set(self: py.Object, _: py.Object, value: py.Object) !void {
     try self.setAttr("_value", py.Object, value);
 }
 
-fn descriptor_delete(self: py.Object, obj: py.Object) !void {
-    _ = obj;
+fn descriptor_delete(self: py.Object, _: py.Object) !void {
     const name_obj: py.Object = try .from([]const u8, "_value");
     defer name_obj.deinit();
     try self.genericDelAttr(name_obj);

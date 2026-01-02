@@ -55,6 +55,7 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
   fall back to `switch (@typeInfo(T)) { ... }` for type categories (int, float, etc.).
 - Prefer typed initialization with inferred literals, e.g. `var foo: Thing = .{}` or
   `var foo: Thing = try .init()` over `var foo = Thing{}` or `var foo = try Thing.init()`.
+- Prefer unused parameters named `_` instead of discarding them in the body (e.g. avoid `_ = value`).
 
 ### Type conversion pattern
 ```zig
