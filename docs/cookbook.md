@@ -8,7 +8,7 @@ Attach classes to a module via `.withTypes`:
 const py = @import("alloconda");
 
 const Greeter = py.class("Greeter", "A tiny class", .{
-    .hello = py.method(hello, .{ .self = true }),
+    .hello = py.method(hello, .{}),
 });
 
 pub const MODULE = py.module("_example", "Example module", .{})

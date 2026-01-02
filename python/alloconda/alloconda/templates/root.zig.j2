@@ -5,7 +5,7 @@ pub const MODULE = py.module(
     "{{ module_name }}",
     "Alloconda module stub.",
     .{
-        .hello = py.method(hello, .{
+        .hello = py.function(hello, .{
             .doc = "Echo back the provided name.",
             .args = &.{ "name" },
         }),

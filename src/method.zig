@@ -21,35 +21,80 @@ const fromPy = types.fromPy;
 const toPy = types.toPy;
 const isOptionalType = types.isOptionalType;
 
+/// Kinds of Python method bindings.
+pub const MethodKind = enum {
+    function,
+    instance,
+    classmethod,
+    staticmethod,
+
+    pub fn includesSelf(kind: @This()) bool {
+        return switch (kind) {
+            .instance, .classmethod => true,
+            .function, .staticmethod => false,
+        };
+    }
+};
+
 /// Options for configuring a Python method binding.
 pub const MethodOptions = struct {
     name: ?[:0]const u8 = null,
     doc: ?[:0]const u8 = null,
     args: ?[]const [:0]const u8 = null,
-    self: bool = false,
+
+    pub const init: @This() = .{};
 };
 
-/// Wrap a Zig function as a Python method.
-pub fn method(
+/// Wrap a Zig function as a Python function.
+pub fn function(
     comptime func: anytype,
     comptime options: MethodOptions,
-) MethodSpec(func) {
+) MethodSpec(@TypeOf(func), .function) {
     return .{
         .func = func,
-        .name = options.name,
-        .doc = options.doc,
-        .args = options.args,
-        .self = options.self,
+        .options = options,
     };
 }
 
-fn MethodSpec(comptime func: anytype) type {
+/// Wrap a Zig function as a Python instance method.
+pub fn method(
+    comptime func: anytype,
+    comptime options: MethodOptions,
+) MethodSpec(@TypeOf(func), .instance) {
+    return .{
+        .func = func,
+        .options = options,
+    };
+}
+
+/// Wrap a Zig function as a Python classmethod.
+pub fn classmethod(
+    comptime func: anytype,
+    comptime options: MethodOptions,
+) MethodSpec(@TypeOf(func), .classmethod) {
+    return .{
+        .func = func,
+        .options = options,
+    };
+}
+
+/// Wrap a Zig function as a Python staticmethod.
+pub fn staticmethod(
+    comptime func: anytype,
+    comptime options: MethodOptions,
+) MethodSpec(@TypeOf(func), .staticmethod) {
+    return .{
+        .func = func,
+        .options = options,
+    };
+}
+
+fn MethodSpec(comptime Func: type, comptime method_kind: MethodKind) type {
     return struct {
-        func: @TypeOf(func),
-        name: ?[:0]const u8 = null,
-        doc: ?[:0]const u8 = null,
-        args: ?[]const [:0]const u8 = null,
-        self: bool = false,
+        pub const is_method_spec = true;
+        pub const kind = method_kind;
+        func: Func,
+        options: MethodOptions = .init,
     };
 }
 
@@ -65,63 +110,38 @@ pub fn buildMethodDefs(comptime methods: anytype) [methodCount(methods) + 1]c.Py
     var defs: [fields.len + 1]c.PyMethodDef = undefined;
 
     inline for (fields, 0..) |field, i| {
-        defs[i] = buildMethodDef(field.name, @field(methods, field.name));
+        const spec = @field(methods, field.name);
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        defs[i] = buildMethodDef(field.name, Func, kind, spec);
     }
 
     defs[fields.len] = .{ .ml_name = null, .ml_meth = null, .ml_flags = 0, .ml_doc = null };
     return defs;
 }
 
-fn buildMethodDef(comptime field_name: []const u8, comptime spec: anytype) c.PyMethodDef {
-    const spec_info = @typeInfo(@TypeOf(spec));
-
-    if (spec_info == .@"fn") {
-        return buildMethodDefFromFunc(field_name, spec, null, null, null, false);
-    }
-
-    if (spec_info == .@"struct") {
-        if (!@hasField(@TypeOf(spec), "func")) {
-            @compileError("method spec must define a `func` field");
-        }
-
-        const doc = if (@hasField(@TypeOf(spec), "doc")) @field(spec, "doc") else null;
-        const name_override = if (@hasField(@TypeOf(spec), "name")) @field(spec, "name") else null;
-        const arg_names = if (@hasField(@TypeOf(spec), "args")) @field(spec, "args") else null;
-        const include_self = if (@hasField(@TypeOf(spec), "self")) @field(spec, "self") else false;
-        return buildMethodDefFromFunc(
-            field_name,
-            @field(spec, "func"),
-            doc,
-            name_override,
-            arg_names,
-            include_self,
-        );
-    }
-
-    @compileError("method must be a function or alloconda.method(...)");
-}
-
-fn buildMethodDefFromFunc(
+fn buildMethodDef(
     comptime field_name: []const u8,
-    comptime func: anytype,
-    comptime doc: ?[:0]const u8,
-    comptime name_override: ?[:0]const u8,
-    comptime arg_names: ?[]const [:0]const u8,
-    comptime include_self: bool,
+    comptime Func: type,
+    comptime kind: MethodKind,
+    comptime spec: MethodSpec(Func, kind),
 ) c.PyMethodDef {
+    const func = spec.func;
+    const options = spec.options;
     if (@typeInfo(@TypeOf(func)) != .@"fn") {
         @compileError("method func must be a function");
     }
 
-    const name = name_override orelse cstr(field_name);
-    validateArgNames(func, arg_names, include_self);
-    const Wrapper = WrapperType(func, arg_names, include_self);
+    const name = options.name orelse cstr(field_name);
+    const include_self = kind.includesSelf();
+    validateArgNames(func, options.args, include_self);
+    const Wrapper = WrapperType(func, options.args, include_self);
 
     return .{
         .ml_name = name,
         .ml_meth = @ptrCast(&Wrapper.call),
-        .ml_flags = methodFlags(func, arg_names, include_self),
-        .ml_doc = cPtr(doc),
+        .ml_flags = methodFlags(func, options.args, kind),
+        .ml_doc = cPtr(options.doc),
     };
 }
 
@@ -161,12 +181,19 @@ fn WrapperType(
 fn methodFlags(
     comptime func: anytype,
     comptime arg_names: ?[]const [:0]const u8,
-    comptime include_self: bool,
+    comptime kind: MethodKind,
 ) c_int {
     const fn_info = @typeInfo(@TypeOf(func)).@"fn";
+    const include_self = kind.includesSelf();
     const arg_count = if (include_self) fn_info.params.len - 1 else fn_info.params.len;
     const base = if (arg_count == 0 and arg_names == null) c.METH_NOARGS else c.METH_VARARGS;
-    return if (arg_names == null) base else base | c.METH_KEYWORDS;
+    var flags: c_int = if (arg_names == null) base else base | c.METH_KEYWORDS;
+    switch (kind) {
+        .classmethod => flags |= c.METH_CLASS,
+        .staticmethod => flags |= c.METH_STATIC,
+        else => {},
+    }
+    return flags;
 }
 
 fn callImpl(

@@ -74,8 +74,8 @@ uv run python -c "import hello_alloconda; print(hello_alloconda.hello('alloconda
 
 ## 5) Edit the module
 
-Open `src/root.zig` and add new functions or classes using `py.method` and
-`py.class`. The next chapters show the available patterns.
+Open `src/root.zig` and add new functions or classes using `py.function`,
+`py.method`, and `py.class`. The next chapters show the available patterns.
 
 ## 6) Cross-compile your first wheel matrix
 

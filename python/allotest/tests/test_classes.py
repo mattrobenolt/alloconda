@@ -189,6 +189,22 @@ class TestSelfParameter:
         assert result == 300
 
 
+class TestClassAndStaticMethods:
+    """Test @classmethod and @staticmethod bindings."""
+
+    def test_classmethod_on_class(self) -> None:
+        assert allotest.MethodKinds.class_name() == "MethodKinds"
+
+    def test_classmethod_on_instance(self) -> None:
+        assert allotest.MethodKinds().class_name() == "MethodKinds"
+
+    def test_staticmethod_on_class(self) -> None:
+        assert allotest.MethodKinds.sum(1, 2) == 3
+
+    def test_staticmethod_on_instance(self) -> None:
+        assert allotest.MethodKinds().sum(2, 3) == 5
+
+
 class TestClassGC:
     """Test garbage collection of class instances."""
 

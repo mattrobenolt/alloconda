@@ -12,163 +12,163 @@ const py = @import("alloconda");
 const Buffer = std.ArrayList(u8);
 
 pub const MODULE = py.module("_native", "Fast protobuf wire format encoding/decoding.", .{
-    .encode_varint = py.method(encodeVarint, .{
+    .encode_varint = py.function(encodeVarint, .{
         .doc = "Encode a signed integer as a varint, returns bytes.",
     }),
-    .encode_varint_unsigned = py.method(encodeVarintUnsigned, .{
+    .encode_varint_unsigned = py.function(encodeVarintUnsigned, .{
         .doc = "Encode an unsigned integer as a varint, returns bytes.",
     }),
-    .decode_varint = py.method(decodeVarint, .{
+    .decode_varint = py.function(decodeVarint, .{
         .doc = "Decode a varint from bytes at offset, returns (value, new_offset).",
     }),
-    .make_tag = py.method(makeTag, .{
+    .make_tag = py.function(makeTag, .{
         .doc = "Create a tag from field number and wire type.",
     }),
-    .parse_tag = py.method(parseTag, .{
+    .parse_tag = py.function(parseTag, .{
         .doc = "Parse a tag into (field_number, wire_type).",
     }),
-    .zigzag_encode = py.method(zigzagEncode, .{
+    .zigzag_encode = py.function(zigzagEncode, .{
         .doc = "Encode a signed integer using zigzag encoding.",
     }),
-    .zigzag_decode = py.method(zigzagDecode, .{
+    .zigzag_decode = py.function(zigzagDecode, .{
         .doc = "Decode a zigzag-encoded integer.",
     }),
-    .encode_fixed32 = py.method(encodeFixed32, .{
+    .encode_fixed32 = py.function(encodeFixed32, .{
         .doc = "Encode a fixed32 value as 4 little-endian bytes.",
     }),
-    .encode_sfixed32 = py.method(encodeSfixed32, .{
+    .encode_sfixed32 = py.function(encodeSfixed32, .{
         .doc = "Encode an sfixed32 value as 4 little-endian bytes.",
     }),
-    .encode_fixed64 = py.method(encodeFixed64, .{
+    .encode_fixed64 = py.function(encodeFixed64, .{
         .doc = "Encode a fixed64 value as 8 little-endian bytes.",
     }),
-    .encode_sfixed64 = py.method(encodeSfixed64, .{
+    .encode_sfixed64 = py.function(encodeSfixed64, .{
         .doc = "Encode an sfixed64 value as 8 little-endian bytes.",
     }),
-    .encode_float = py.method(encodeFloat, .{
+    .encode_float = py.function(encodeFloat, .{
         .doc = "Encode a float value as 4 little-endian bytes.",
     }),
-    .encode_double = py.method(encodeDouble, .{
+    .encode_double = py.function(encodeDouble, .{
         .doc = "Encode a double value as 8 little-endian bytes.",
     }),
-    .encode_packed_int32s = py.method(encodePackedInt32s, .{
+    .encode_packed_int32s = py.function(encodePackedInt32s, .{
         .doc = "Encode packed int32 values.",
     }),
-    .encode_packed_int64s = py.method(encodePackedInt64s, .{
+    .encode_packed_int64s = py.function(encodePackedInt64s, .{
         .doc = "Encode packed int64 values.",
     }),
-    .encode_packed_uint32s = py.method(encodePackedUint32s, .{
+    .encode_packed_uint32s = py.function(encodePackedUint32s, .{
         .doc = "Encode packed uint32 values.",
     }),
-    .encode_packed_uint64s = py.method(encodePackedUint64s, .{
+    .encode_packed_uint64s = py.function(encodePackedUint64s, .{
         .doc = "Encode packed uint64 values.",
     }),
-    .encode_packed_sint32s = py.method(encodePackedSint32s, .{
+    .encode_packed_sint32s = py.function(encodePackedSint32s, .{
         .doc = "Encode packed sint32 values.",
     }),
-    .encode_packed_sint64s = py.method(encodePackedSint64s, .{
+    .encode_packed_sint64s = py.function(encodePackedSint64s, .{
         .doc = "Encode packed sint64 values.",
     }),
-    .encode_packed_bools = py.method(encodePackedBools, .{
+    .encode_packed_bools = py.function(encodePackedBools, .{
         .doc = "Encode packed bool values.",
     }),
-    .encode_packed_fixed32s = py.method(encodePackedFixed32s, .{
+    .encode_packed_fixed32s = py.function(encodePackedFixed32s, .{
         .doc = "Encode packed fixed32 values.",
     }),
-    .encode_packed_sfixed32s = py.method(encodePackedSfixed32s, .{
+    .encode_packed_sfixed32s = py.function(encodePackedSfixed32s, .{
         .doc = "Encode packed sfixed32 values.",
     }),
-    .encode_packed_floats = py.method(encodePackedFloats, .{
+    .encode_packed_floats = py.function(encodePackedFloats, .{
         .doc = "Encode packed float values.",
     }),
-    .encode_packed_fixed64s = py.method(encodePackedFixed64s, .{
+    .encode_packed_fixed64s = py.function(encodePackedFixed64s, .{
         .doc = "Encode packed fixed64 values.",
     }),
-    .encode_packed_sfixed64s = py.method(encodePackedSfixed64s, .{
+    .encode_packed_sfixed64s = py.function(encodePackedSfixed64s, .{
         .doc = "Encode packed sfixed64 values.",
     }),
-    .encode_packed_doubles = py.method(encodePackedDoubles, .{
+    .encode_packed_doubles = py.function(encodePackedDoubles, .{
         .doc = "Encode packed double values.",
     }),
-    .decode_fixed32 = py.method(decodeFixed32, .{
+    .decode_fixed32 = py.function(decodeFixed32, .{
         .doc = "Decode a fixed32 from bytes at offset, returns (value, new_offset).",
     }),
-    .decode_fixed64 = py.method(decodeFixed64, .{
+    .decode_fixed64 = py.function(decodeFixed64, .{
         .doc = "Decode a fixed64 from bytes at offset, returns (value, new_offset).",
     }),
-    .float_from_bits = py.method(floatFromBits, .{
+    .float_from_bits = py.function(floatFromBits, .{
         .doc = "Interpret u32 bits as float.",
     }),
-    .double_from_bits = py.method(doubleFromBits, .{
+    .double_from_bits = py.function(doubleFromBits, .{
         .doc = "Interpret u64 bits as double.",
     }),
-    .varint_to_int32 = py.method(varintToInt32, .{
+    .varint_to_int32 = py.function(varintToInt32, .{
         .doc = "Interpret an unsigned varint as int32.",
     }),
-    .varint_to_int64 = py.method(varintToInt64, .{
+    .varint_to_int64 = py.function(varintToInt64, .{
         .doc = "Interpret an unsigned varint as int64.",
     }),
-    .varint_to_uint32 = py.method(varintToUint32, .{
+    .varint_to_uint32 = py.function(varintToUint32, .{
         .doc = "Interpret an unsigned varint as uint32.",
     }),
-    .varint_to_uint64 = py.method(varintToUint64, .{
+    .varint_to_uint64 = py.function(varintToUint64, .{
         .doc = "Interpret an unsigned varint as uint64.",
     }),
-    .varint_to_sint32 = py.method(varintToSint32, .{
+    .varint_to_sint32 = py.function(varintToSint32, .{
         .doc = "Interpret an unsigned varint as sint32 (zigzag).",
     }),
-    .varint_to_sint64 = py.method(varintToSint64, .{
+    .varint_to_sint64 = py.function(varintToSint64, .{
         .doc = "Interpret an unsigned varint as sint64 (zigzag).",
     }),
-    .varint_to_bool = py.method(varintToBool, .{
+    .varint_to_bool = py.function(varintToBool, .{
         .doc = "Interpret an unsigned varint as bool.",
     }),
-    .fixed32_to_sfixed32 = py.method(fixed32ToSfixed32, .{
+    .fixed32_to_sfixed32 = py.function(fixed32ToSfixed32, .{
         .doc = "Interpret a fixed32 value as sfixed32.",
     }),
-    .fixed64_to_sfixed64 = py.method(fixed64ToSfixed64, .{
+    .fixed64_to_sfixed64 = py.function(fixed64ToSfixed64, .{
         .doc = "Interpret a fixed64 value as sfixed64.",
     }),
-    .decode_packed_int32s = py.method(decodePackedInt32s, .{
+    .decode_packed_int32s = py.function(decodePackedInt32s, .{
         .doc = "Decode packed varints as int32 list.",
     }),
-    .decode_packed_int64s = py.method(decodePackedInt64s, .{
+    .decode_packed_int64s = py.function(decodePackedInt64s, .{
         .doc = "Decode packed varints as int64 list.",
     }),
-    .decode_packed_uint32s = py.method(decodePackedUint32s, .{
+    .decode_packed_uint32s = py.function(decodePackedUint32s, .{
         .doc = "Decode packed varints as uint32 list.",
     }),
-    .decode_packed_uint64s = py.method(decodePackedUint64s, .{
+    .decode_packed_uint64s = py.function(decodePackedUint64s, .{
         .doc = "Decode packed varints as uint64 list.",
     }),
-    .decode_packed_sint32s = py.method(decodePackedSint32s, .{
+    .decode_packed_sint32s = py.function(decodePackedSint32s, .{
         .doc = "Decode packed varints as sint32 list.",
     }),
-    .decode_packed_sint64s = py.method(decodePackedSint64s, .{
+    .decode_packed_sint64s = py.function(decodePackedSint64s, .{
         .doc = "Decode packed varints as sint64 list.",
     }),
-    .decode_packed_bools = py.method(decodePackedBools, .{
+    .decode_packed_bools = py.function(decodePackedBools, .{
         .doc = "Decode packed varints as bool list.",
     }),
-    .decode_packed_fixed32s = py.method(decodePackedFixed32s, .{
+    .decode_packed_fixed32s = py.function(decodePackedFixed32s, .{
         .doc = "Decode packed fixed32 values.",
     }),
-    .decode_packed_sfixed32s = py.method(decodePackedSfixed32s, .{
+    .decode_packed_sfixed32s = py.function(decodePackedSfixed32s, .{
         .doc = "Decode packed sfixed32 values.",
     }),
-    .decode_packed_floats = py.method(decodePackedFloats, .{
+    .decode_packed_floats = py.function(decodePackedFloats, .{
         .doc = "Decode packed float values.",
     }),
-    .decode_packed_fixed64s = py.method(decodePackedFixed64s, .{
+    .decode_packed_fixed64s = py.function(decodePackedFixed64s, .{
         .doc = "Decode packed fixed64 values.",
     }),
-    .decode_packed_sfixed64s = py.method(decodePackedSfixed64s, .{
+    .decode_packed_sfixed64s = py.function(decodePackedSfixed64s, .{
         .doc = "Decode packed sfixed64 values.",
     }),
-    .decode_packed_doubles = py.method(decodePackedDoubles, .{
+    .decode_packed_doubles = py.function(decodePackedDoubles, .{
         .doc = "Decode packed double values.",
     }),
-    .skip_field = py.method(skipField, .{
+    .skip_field = py.function(skipField, .{
         .doc = "Skip a field at offset, returns new offset or None at end.",
     }),
 });

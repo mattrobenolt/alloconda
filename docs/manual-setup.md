@@ -114,7 +114,7 @@ const py = @import("alloconda");
 const mylib = @import("mylib");
 
 pub const MODULE = py.module("_native", "My module description.", .{
-    .some_function = py.method(someFunction, .{
+    .some_function = py.function(someFunction, .{
         .doc = "Function documentation.",
     }),
 });

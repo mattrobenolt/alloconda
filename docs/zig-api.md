@@ -19,7 +19,7 @@ Export a single module definition named `MODULE`:
 const py = @import("alloconda");
 
 pub const MODULE = py.module("_hello_alloconda", "Example module", .{
-    .hello = py.method(hello, .{}),
+    .hello = py.function(hello, .{}),
 });
 
 fn hello(name: []const u8) []const u8 {
@@ -29,18 +29,20 @@ fn hello(name: []const u8) []const u8 {
 
 ## Method options
 
-`py.method` always takes an explicit options struct. You can attach docstrings
-and argument names:
+`py.function`/`py.method`/`py.classmethod`/`py.staticmethod` always take an
+explicit options struct. You can attach docstrings and argument names:
 
 ```zig
-.hello = py.method(hello, .{
+.hello = py.function(hello, .{
     .doc = "Echo back the provided name.",
     .args = &.{ "name" },
 }),
 ```
 
-If a method is defined on a class and needs `self`, set `.self = true` and include
-`self: py.Object` as the first parameter.
+If a method is defined on a class and needs `self`, use `py.method` and include
+`self: py.Object` as the first parameter. For class methods, use `py.classmethod`
+and accept `cls: py.Object`. For static methods, use `py.staticmethod` and omit
+`self`/`cls`.
 
 ## Classes
 
@@ -48,7 +50,7 @@ Define classes with `py.class` and attach them via `.withTypes`:
 
 ```zig
 const Greeter = py.class("Greeter", "A tiny class", .{
-    .hello = py.method(hello, .{ .self = true }),
+    .hello = py.method(hello, .{}),
 });
 
 pub const MODULE = py.module("_hello_alloconda", "Example module", .{})

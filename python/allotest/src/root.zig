@@ -14,93 +14,94 @@ const py = @import("alloconda");
 
 pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     // Basic function binding
-    .add = py.method(add, .{ .doc = "Add two integers" }),
-    .add3 = py.method(add3, .{ .doc = "Add two or three integers" }),
-    .add_named = py.method(add_named, .{ .doc = "Add named integers", .args = &.{ "a", "b", "c" } }),
+    .add = py.function(add, .{ .doc = "Add two integers" }),
+    .add3 = py.function(add3, .{ .doc = "Add two or three integers" }),
+    .add_named = py.function(add_named, .{ .doc = "Add named integers", .args = &.{ "a", "b", "c" } }),
 
     // Type conversions
-    .identity_int = py.method(identity_int, .{ .doc = "Return an integer unchanged" }),
-    .identity_float = py.method(identity_float, .{ .doc = "Return a float unchanged" }),
-    .identity_bool = py.method(identity_bool, .{ .doc = "Return a bool unchanged" }),
-    .identity_str = py.method(identity_str, .{ .doc = "Return a string unchanged" }),
-    .identity_bytes = py.method(identity_bytes, .{ .doc = "Return bytes unchanged" }),
-    .identity_optional = py.method(identity_optional, .{ .doc = "Return optional string or None" }),
-    .identity_object = py.method(identity_object, .{ .doc = "Return any object unchanged" }),
-    .int64_or_uint64 = py.method(int64_or_uint64, .{ .doc = "Parse int as signed/unsigned 64-bit" }),
-    .mask_u32 = py.method(mask_u32, .{ .doc = "Mask int to u32" }),
-    .mask_u64 = py.method(mask_u64, .{ .doc = "Mask int to u64" }),
-    .bigint_to_string = py.method(bigint_to_string, .{ .doc = "Convert bigint to decimal string" }),
-    .bigint_roundtrip = py.method(bigint_roundtrip, .{ .doc = "Roundtrip bigint through py.BigInt" }),
-    .int_roundtrip = py.method(int_roundtrip, .{ .doc = "Roundtrip int through py.Int" }),
+    .identity_int = py.function(identity_int, .{ .doc = "Return an integer unchanged" }),
+    .identity_float = py.function(identity_float, .{ .doc = "Return a float unchanged" }),
+    .identity_bool = py.function(identity_bool, .{ .doc = "Return a bool unchanged" }),
+    .identity_str = py.function(identity_str, .{ .doc = "Return a string unchanged" }),
+    .identity_bytes = py.function(identity_bytes, .{ .doc = "Return bytes unchanged" }),
+    .identity_optional = py.function(identity_optional, .{ .doc = "Return optional string or None" }),
+    .identity_object = py.function(identity_object, .{ .doc = "Return any object unchanged" }),
+    .int64_or_uint64 = py.function(int64_or_uint64, .{ .doc = "Parse int as signed/unsigned 64-bit" }),
+    .mask_u32 = py.function(mask_u32, .{ .doc = "Mask int to u32" }),
+    .mask_u64 = py.function(mask_u64, .{ .doc = "Mask int to u64" }),
+    .bigint_to_string = py.function(bigint_to_string, .{ .doc = "Convert bigint to decimal string" }),
+    .bigint_roundtrip = py.function(bigint_roundtrip, .{ .doc = "Roundtrip bigint through py.BigInt" }),
+    .int_roundtrip = py.function(int_roundtrip, .{ .doc = "Roundtrip int through py.Int" }),
 
     // Bytes operations
-    .bytes_len = py.method(bytes_len, .{ .doc = "Return length of bytes" }),
-    .bytes_slice = py.method(bytes_slice, .{ .doc = "Return slice of bytes as new bytes" }),
-    .bytes_create = py.method(bytes_create, .{ .doc = "Create bytes from string" }),
-    .buffer_len = py.method(buffer_len, .{ .doc = "Return length of buffer" }),
-    .buffer_sum = py.method(buffer_sum, .{ .doc = "Return sum of buffer bytes" }),
+    .bytes_len = py.function(bytes_len, .{ .doc = "Return length of bytes" }),
+    .bytes_slice = py.function(bytes_slice, .{ .doc = "Return slice of bytes as new bytes" }),
+    .bytes_create = py.function(bytes_create, .{ .doc = "Create bytes from string" }),
+    .buffer_len = py.function(buffer_len, .{ .doc = "Return length of buffer" }),
+    .buffer_sum = py.function(buffer_sum, .{ .doc = "Return sum of buffer bytes" }),
 
     // List operations
-    .list_len = py.method(list_len, .{ .doc = "Return length of list" }),
-    .list_get = py.method(list_get, .{ .doc = "Get item from list by index" }),
-    .list_sum = py.method(list_sum, .{ .doc = "Sum a list of integers" }),
-    .list_create = py.method(list_create, .{ .doc = "Create a new list with given values" }),
-    .list_append = py.method(list_append, .{ .doc = "Append value to list and return it" }),
-    .list_set = py.method(list_set, .{ .doc = "Set item in list by index" }),
+    .list_len = py.function(list_len, .{ .doc = "Return length of list" }),
+    .list_get = py.function(list_get, .{ .doc = "Get item from list by index" }),
+    .list_sum = py.function(list_sum, .{ .doc = "Sum a list of integers" }),
+    .list_create = py.function(list_create, .{ .doc = "Create a new list with given values" }),
+    .list_append = py.function(list_append, .{ .doc = "Append value to list and return it" }),
+    .list_set = py.function(list_set, .{ .doc = "Set item in list by index" }),
 
     // Dict operations
-    .dict_len = py.method(dict_len, .{ .doc = "Return length of dict" }),
-    .dict_get = py.method(dict_get, .{ .doc = "Get item from dict by key" }),
-    .dict_create = py.method(dict_create, .{ .doc = "Create a new dict with one key-value pair" }),
-    .dict_set = py.method(dict_set, .{ .doc = "Set item in dict by key" }),
-    .dict_keys = py.method(dict_keys, .{ .doc = "Return list of dict keys via iteration" }),
+    .dict_len = py.function(dict_len, .{ .doc = "Return length of dict" }),
+    .dict_get = py.function(dict_get, .{ .doc = "Get item from dict by key" }),
+    .dict_create = py.function(dict_create, .{ .doc = "Create a new dict with one key-value pair" }),
+    .dict_set = py.function(dict_set, .{ .doc = "Set item in dict by key" }),
+    .dict_keys = py.function(dict_keys, .{ .doc = "Return list of dict keys via iteration" }),
 
     // Tuple operations
-    .tuple_len = py.method(tuple_len, .{ .doc = "Return length of tuple" }),
-    .tuple_get = py.method(tuple_get, .{ .doc = "Get item from tuple by index" }),
-    .tuple_create = py.method(tuple_create, .{ .doc = "Create a tuple from values" }),
-    .tuple_create_manual = py.method(tuple_create_manual, .{ .doc = "Create a tuple via Tuple.init/set" }),
+    .tuple_len = py.function(tuple_len, .{ .doc = "Return length of tuple" }),
+    .tuple_get = py.function(tuple_get, .{ .doc = "Get item from tuple by index" }),
+    .tuple_create = py.function(tuple_create, .{ .doc = "Create a tuple from values" }),
+    .tuple_create_manual = py.function(tuple_create_manual, .{ .doc = "Create a tuple via Tuple.init/set" }),
 
     // Object operations
-    .obj_call0 = py.method(obj_call0, .{ .doc = "Call object with no args" }),
-    .obj_call1 = py.method(obj_call1, .{ .doc = "Call object with one arg" }),
-    .obj_call2 = py.method(obj_call2, .{ .doc = "Call object with two args" }),
-    .obj_getattr = py.method(obj_getattr, .{ .doc = "Get attribute from object" }),
-    .obj_setattr = py.method(obj_setattr, .{ .doc = "Set attribute on object" }),
-    .obj_callmethod0 = py.method(obj_callmethod0, .{ .doc = "Call method with no args" }),
-    .obj_callmethod1 = py.method(obj_callmethod1, .{ .doc = "Call method with one arg" }),
-    .obj_is_callable = py.method(obj_is_callable, .{ .doc = "Check if object is callable" }),
-    .obj_is_none = py.method(obj_is_none, .{ .doc = "Check if object is None" }),
+    .obj_call0 = py.function(obj_call0, .{ .doc = "Call object with no args" }),
+    .obj_call1 = py.function(obj_call1, .{ .doc = "Call object with one arg" }),
+    .obj_call2 = py.function(obj_call2, .{ .doc = "Call object with two args" }),
+    .obj_getattr = py.function(obj_getattr, .{ .doc = "Get attribute from object" }),
+    .obj_setattr = py.function(obj_setattr, .{ .doc = "Set attribute on object" }),
+    .obj_callmethod0 = py.function(obj_callmethod0, .{ .doc = "Call method with no args" }),
+    .obj_callmethod1 = py.function(obj_callmethod1, .{ .doc = "Call method with one arg" }),
+    .obj_is_callable = py.function(obj_is_callable, .{ .doc = "Check if object is callable" }),
+    .obj_is_none = py.function(obj_is_none, .{ .doc = "Check if object is None" }),
 
     // Type checking
-    .is_unicode = py.method(is_unicode, .{ .doc = "Check if object is unicode string" }),
-    .is_bytes = py.method(is_bytes, .{ .doc = "Check if object is bytes" }),
-    .is_bool = py.method(is_bool, .{ .doc = "Check if object is bool" }),
-    .is_int = py.method(is_int, .{ .doc = "Check if object is int" }),
-    .is_float = py.method(is_float, .{ .doc = "Check if object is float" }),
-    .is_list = py.method(is_list, .{ .doc = "Check if object is list" }),
-    .is_tuple = py.method(is_tuple, .{ .doc = "Check if object is tuple" }),
-    .is_dict = py.method(is_dict, .{ .doc = "Check if object is dict" }),
+    .is_unicode = py.function(is_unicode, .{ .doc = "Check if object is unicode string" }),
+    .is_bytes = py.function(is_bytes, .{ .doc = "Check if object is bytes" }),
+    .is_bool = py.function(is_bool, .{ .doc = "Check if object is bool" }),
+    .is_int = py.function(is_int, .{ .doc = "Check if object is int" }),
+    .is_float = py.function(is_float, .{ .doc = "Check if object is float" }),
+    .is_list = py.function(is_list, .{ .doc = "Check if object is list" }),
+    .is_tuple = py.function(is_tuple, .{ .doc = "Check if object is tuple" }),
+    .is_dict = py.function(is_dict, .{ .doc = "Check if object is dict" }),
 
     // Error handling - each exception type
-    .raise_type_error = py.method(raise_type_error, .{ .doc = "Raise TypeError" }),
-    .raise_value_error = py.method(raise_value_error, .{ .doc = "Raise ValueError" }),
-    .raise_runtime_error = py.method(raise_runtime_error, .{ .doc = "Raise RuntimeError" }),
-    .raise_zero_division = py.method(raise_zero_division, .{ .doc = "Raise ZeroDivisionError" }),
-    .raise_overflow_error = py.method(raise_overflow_error, .{ .doc = "Raise OverflowError" }),
-    .raise_attribute_error = py.method(raise_attribute_error, .{ .doc = "Raise AttributeError" }),
-    .raise_index_error = py.method(raise_index_error, .{ .doc = "Raise IndexError" }),
-    .raise_key_error = py.method(raise_key_error, .{ .doc = "Raise KeyError" }),
-    .raise_memory_error = py.method(raise_memory_error, .{ .doc = "Raise MemoryError" }),
-    .divide = py.method(divide, .{ .doc = "Divide two floats, raises ZeroDivisionError if b=0" }),
-    .raise_mapped = py.method(raise_mapped, .{ .doc = "Test error mapping" }),
+    .raise_type_error = py.function(raise_type_error, .{ .doc = "Raise TypeError" }),
+    .raise_value_error = py.function(raise_value_error, .{ .doc = "Raise ValueError" }),
+    .raise_runtime_error = py.function(raise_runtime_error, .{ .doc = "Raise RuntimeError" }),
+    .raise_zero_division = py.function(raise_zero_division, .{ .doc = "Raise ZeroDivisionError" }),
+    .raise_overflow_error = py.function(raise_overflow_error, .{ .doc = "Raise OverflowError" }),
+    .raise_attribute_error = py.function(raise_attribute_error, .{ .doc = "Raise AttributeError" }),
+    .raise_index_error = py.function(raise_index_error, .{ .doc = "Raise IndexError" }),
+    .raise_key_error = py.function(raise_key_error, .{ .doc = "Raise KeyError" }),
+    .raise_memory_error = py.function(raise_memory_error, .{ .doc = "Raise MemoryError" }),
+    .divide = py.function(divide, .{ .doc = "Divide two floats, raises ZeroDivisionError if b=0" }),
+    .raise_mapped = py.function(raise_mapped, .{ .doc = "Test error mapping" }),
 
     // Python interop
-    .import_math_pi = py.method(import_math_pi, .{ .doc = "Import math.pi" }),
-    .call_upper = py.method(call_upper, .{ .doc = "Call .upper() on a string" }),
+    .import_math_pi = py.function(import_math_pi, .{ .doc = "Import math.pi" }),
+    .call_upper = py.function(call_upper, .{ .doc = "Call .upper() on a string" }),
 }).withTypes(.{
     .Adder = Adder,
     .Counter = Counter,
+    .MethodKinds = MethodKinds,
 });
 
 // ============================================================================
@@ -153,7 +154,7 @@ fn identity_object(x: py.Object) py.Object {
 
 fn int64_or_uint64(value: py.Object) !py.Tuple {
     const parsed = try py.Long.fromObject(value);
-    var result = try py.Tuple.init(2);
+    var result: py.Tuple = try .init(2);
     errdefer result.deinit();
     const is_signed = switch (parsed) {
         .signed => true,
@@ -187,7 +188,7 @@ fn bigint_to_string(value: py.BigInt) !py.Object {
         return py.raise(.MemoryError, "out of memory");
     };
     defer py.allocator.free(text);
-    return py.Object.from([]const u8, text);
+    return .from([]const u8, text);
 }
 
 fn bigint_roundtrip(value: py.BigInt) !py.Object {
@@ -217,11 +218,11 @@ fn bytes_slice(data: py.Bytes, start: i64, end: i64) !py.Bytes {
     if (s > slice.len or e > slice.len or s > e) {
         return py.raise(.IndexError, "slice out of bounds");
     }
-    return py.Bytes.fromSlice(slice[s..e]);
+    return .fromSlice(slice[s..e]);
 }
 
 fn bytes_create(value: []const u8) !py.Bytes {
-    return py.Bytes.fromSlice(value);
+    return .fromSlice(value);
 }
 
 fn buffer_len(data: py.Buffer) !usize {
@@ -266,7 +267,7 @@ fn list_sum(values: py.List) !i64 {
 }
 
 fn list_create(a: i64, b: i64, c: i64) !py.List {
-    var list = try py.List.init(3);
+    var list: py.List = try .init(3);
     errdefer list.deinit();
     try list.set(i64, 0, a);
     try list.set(i64, 1, b);
@@ -301,7 +302,7 @@ fn dict_get(dict: py.Dict, key: []const u8) !?i64 {
 }
 
 fn dict_create(key: []const u8, value: i64) !py.Dict {
-    var dict = try py.Dict.init();
+    var dict: py.Dict = try .init();
     errdefer dict.deinit();
     try dict.setItem([]const u8, key, i64, value);
     return dict;
@@ -314,9 +315,9 @@ fn dict_set(dict: py.Dict, key: []const u8, value: i64) !py.Dict {
 
 fn dict_keys(dict: py.Dict) !py.List {
     const size = try dict.len();
-    var list = try py.List.init(size);
+    var list: py.List = try .init(size);
     errdefer list.deinit();
-    var iter = try py.DictIter.fromObject(dict.obj);
+    var iter: py.DictIter = try .fromObject(dict.obj);
     var i: usize = 0;
     while (iter.next()) |entry| {
         try list.set(py.Object, i, entry.key.incref());
@@ -341,12 +342,12 @@ fn tuple_get(tuple: py.Tuple, index: i64) !py.Object {
 
 fn tuple_create(a: i64, b: i64) !py.Object {
     const values: [2]i64 = .{ a, b };
-    const tuple = try py.Tuple.fromSlice(i64, &values);
+    const tuple: py.Tuple = try .fromSlice(i64, &values);
     return tuple.obj;
 }
 
 fn tuple_create_manual(a: i64, b: i64) !py.Object {
-    var tuple = try py.Tuple.init(2);
+    var tuple: py.Tuple = try .init(2);
     errdefer tuple.deinit();
     try tuple.set(i64, 0, a);
     try tuple.set(i64, 1, b);
@@ -514,7 +515,7 @@ fn import_math_pi() !f64 {
 }
 
 fn call_upper(value: []const u8) ![]const u8 {
-    const obj = try py.Object.from([]const u8, value);
+    const obj: py.Object = try .from([]const u8, value);
     defer obj.deinit();
     const out = try obj.callMethod0("upper");
     defer out.deinit();
@@ -527,8 +528,8 @@ fn call_upper(value: []const u8) ![]const u8 {
 
 // Simple class for basic method testing
 const Adder = py.class("Adder", "Simple adder class for testing.", .{
-    .add = py.method(adder_add, .{ .self = true, .doc = "Add two integers" }),
-    .identity = py.method(adder_identity, .{ .self = true, .doc = "Return self" }),
+    .add = py.method(adder_add, .{ .doc = "Add two integers" }),
+    .identity = py.method(adder_identity, .{ .doc = "Return self" }),
 });
 
 fn adder_add(self: py.Object, a: i64, b: i64) i64 {
@@ -542,17 +543,17 @@ fn adder_identity(self: py.Object) py.Object {
 
 // Class with mutable state via attributes
 const Counter = py.class("Counter", "Counter class with mutable state.", .{
-    .get = py.method(counter_get, .{ .self = true, .doc = "Get current count" }),
-    .increment = py.method(counter_increment, .{ .self = true, .doc = "Increment counter" }),
-    .add = py.method(counter_add, .{ .self = true, .doc = "Add value to counter" }),
-    .reset = py.method(counter_reset, .{ .self = true, .doc = "Reset counter to zero" }),
+    .get = py.method(counter_get, .{ .doc = "Get current count" }),
+    .increment = py.method(counter_increment, .{ .doc = "Increment counter" }),
+    .add = py.method(counter_add, .{ .doc = "Add value to counter" }),
+    .reset = py.method(counter_reset, .{ .doc = "Reset counter to zero" }),
 });
 
 fn counter_get(self: py.Object) !i64 {
     const count_obj = self.getAttr("_count") catch {
         // Attribute doesn't exist - clear the AttributeError and initialize
-        py.ffi.c.PyErr_Clear();
-        const zero = try py.Object.from(i64, @as(i64, 0));
+        py.ffi.PyErr.clear();
+        const zero: py.Object = try .from(i64, 0);
         try self.setAttr("_count", py.Object, zero);
         return 0;
     };
@@ -563,7 +564,7 @@ fn counter_get(self: py.Object) !i64 {
 fn counter_increment(self: py.Object) !i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + 1;
-    const new_obj = try py.Object.from(i64, new_val);
+    const new_obj: py.Object = try .from(i64, new_val);
     try self.setAttr("_count", py.Object, new_obj);
     return new_val;
 }
@@ -571,12 +572,28 @@ fn counter_increment(self: py.Object) !i64 {
 fn counter_add(self: py.Object, value: i64) !i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + value;
-    const new_obj = try py.Object.from(i64, new_val);
+    const new_obj: py.Object = try .from(i64, new_val);
     try self.setAttr("_count", py.Object, new_obj);
     return new_val;
 }
 
 fn counter_reset(self: py.Object) !void {
-    const zero = try py.Object.from(i64, @as(i64, 0));
+    const zero: py.Object = try .from(i64, 0);
     try self.setAttr("_count", py.Object, zero);
+}
+
+// Class for classmethod/staticmethod testing
+const MethodKinds = py.class("MethodKinds", "Class for classmethod/staticmethod testing.", .{
+    .class_name = py.classmethod(methodkinds_class_name, .{ .doc = "Return class name" }),
+    .sum = py.staticmethod(methodkinds_sum, .{ .doc = "Add two integers" }),
+});
+
+fn methodkinds_class_name(cls: py.Object) ![]const u8 {
+    const name_obj = try cls.getAttr("__name__");
+    defer name_obj.deinit();
+    return name_obj.as([]const u8);
+}
+
+fn methodkinds_sum(a: i64, b: i64) i64 {
+    return a + b;
 }

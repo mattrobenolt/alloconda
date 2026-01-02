@@ -39,7 +39,7 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 - Expose a single Python module via `pub const MODULE = ...`.
 - Prefer alloconda wrappers (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`, helpers).
 - Avoid raw `py.ffi.c` unless the wrapper surface is missing.
-- Use `py.method(fn, .{...})` explicitly (Zig 0.15 requirement).
+- Use `py.function`/`py.method`/`py.classmethod`/`py.staticmethod`.
 
 ### Style preferences
 - **Linting:** Enforced by `zlint`. Key rules: `no-print` (use logging/errors), `line-length` 120, `avoid-as` (casting).
@@ -53,6 +53,8 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 - Prefer `switch` over `if` chains when matching on types or enums.
 - For comptime type dispatch, use `switch (T) { ... }` when matching specific types,
   fall back to `switch (@typeInfo(T)) { ... }` for type categories (int, float, etc.).
+- Prefer typed initialization with inferred literals, e.g. `var foo: Thing = .{}` or
+  `var foo: Thing = try .init()` over `var foo = Thing{}` or `var foo = try Thing.init()`.
 
 ### Type conversion pattern
 ```zig
