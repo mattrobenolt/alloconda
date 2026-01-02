@@ -94,6 +94,8 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .raise_memory_error = py.function(raise_memory_error, .{ .doc = "Raise MemoryError" }),
     .divide = py.function(divide, .{ .doc = "Divide two floats, raises ZeroDivisionError if b=0" }),
     .raise_mapped = py.function(raise_mapped, .{ .doc = "Test error mapping" }),
+    .get_del_count = py.function(get_del_count, .{ .doc = "Return __del__ call count" }),
+    .reset_del_count = py.function(reset_del_count, .{ .doc = "Reset __del__ call count" }),
 
     // Python interop
     .import_math_pi = py.function(import_math_pi, .{ .doc = "Import math.pi" }),
@@ -109,6 +111,19 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     .Counter = Counter,
     .MethodKinds = MethodKinds,
     .CallableAdder = CallableAdder,
+    .DunderBasics = DunderBasics,
+    .SubscriptBox = SubscriptBox,
+    .ComparePoint = ComparePoint,
+    .NumberBox = NumberBox,
+    .ContextLock = ContextLock,
+    .IterCounter = IterCounter,
+    .ContainsBox = ContainsBox,
+    .InitBox = InitBox,
+    .AttrAccessBox = AttrAccessBox,
+    .AttrSetBox = AttrSetBox,
+    .DescriptorBox = DescriptorBox,
+    .NewBox = NewBox,
+    .DelBox = DelBox,
 });
 
 const MODULE_VERSION: []const u8 = "0.1.0";
@@ -116,6 +131,7 @@ const DEFAULT_SIZE: i64 = 256;
 const ENABLED: bool = true;
 const OPTIONAL_NAME: ?[]const u8 = null;
 const PI: f64 = 3.14159;
+var del_count: usize = 0;
 
 // ============================================================================
 // Basic Function Binding
@@ -515,6 +531,14 @@ fn raise_mapped(kind: []const u8) py.PyError {
     });
 }
 
+fn get_del_count() usize {
+    return del_count;
+}
+
+fn reset_del_count() void {
+    del_count = 0;
+}
+
 // ============================================================================
 // Python Interop
 // ============================================================================
@@ -545,8 +569,7 @@ const Adder = py.class("Adder", "Simple adder class for testing.", .{
     .identity = py.method(adder_identity, .{ .doc = "Return self" }),
 });
 
-fn adder_add(self: py.Object, a: i64, b: i64) i64 {
-    _ = self;
+fn adder_add(_: py.Object, a: i64, b: i64) i64 {
     return a + b;
 }
 
@@ -563,9 +586,7 @@ const Counter = py.class("Counter", "Counter class with mutable state.", .{
 });
 
 fn counter_get(self: py.Object) !i64 {
-    const count_obj = self.getAttr("_count") catch {
-        // Attribute doesn't exist - clear the AttributeError and initialize
-        py.ffi.PyErr.clear();
+    const count_obj = try self.getAttrOrNull("_count") orelse {
         const zero: py.Object = try .from(i64, 0);
         try self.setAttr("_count", py.Object, zero);
         return 0;
@@ -616,7 +637,584 @@ const CallableAdder = py.class("CallableAdder", "Callable class for __call__ tes
     .__call__ = py.method(callable_add, .{ .doc = "Add value with optional extra", .args = &.{ "value", "extra" } }),
 });
 
-fn callable_add(self: py.Object, value: i64, extra: ?i64) i64 {
-    _ = self;
+fn callable_add(_: py.Object, value: i64, extra: ?i64) i64 {
     return value + (extra orelse 0);
+}
+
+// Dunder basics for __repr__/__str__/__len__/__hash__/__bool__
+const DunderBasics = py.class("DunderBasics", "Class for dunder basics testing.", .{
+    .__repr__ = py.method(dunder_repr, .{ .doc = "Return repr string" }),
+    .__str__ = py.method(dunder_str, .{ .doc = "Return display string" }),
+    .__len__ = py.method(dunder_len, .{ .doc = "Return length value" }),
+    .__hash__ = py.method(dunder_hash, .{ .doc = "Return hash value" }),
+    .__bool__ = py.method(dunder_bool, .{ .doc = "Return truthiness" }),
+});
+
+fn dunder_value(self: py.Object) !i64 {
+    const value_obj = try self.getAttrOrNull("value") orelse return 0;
+
+    defer value_obj.deinit();
+    return value_obj.as(i64);
+}
+
+fn dunder_repr(self: py.Object) !py.Object {
+    const value: i64 = try dunder_value(self);
+    var buffer: [64]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "DunderBasics({d})", .{value}) catch {
+        return py.raise(.RuntimeError, "formatting failed");
+    };
+    return .from([]const u8, text);
+}
+
+fn dunder_str(self: py.Object) !py.Object {
+    const value: i64 = try dunder_value(self);
+    var buffer: [80]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "DunderBasics value={d}", .{value}) catch {
+        return py.raise(.RuntimeError, "formatting failed");
+    };
+    return .from([]const u8, text);
+}
+
+fn dunder_len(self: py.Object) !i64 {
+    const value: i64 = try dunder_value(self);
+    if (value < 0) {
+        return py.raise(.ValueError, "length must be non-negative");
+    }
+    return value;
+}
+
+fn dunder_hash(self: py.Object) !i64 {
+    return dunder_value(self);
+}
+
+fn dunder_bool(self: py.Object) !bool {
+    const value: i64 = try dunder_value(self);
+    return value != 0;
+}
+
+// Subscript operations
+const SubscriptBox = py.class("SubscriptBox", "Class for subscript testing.", .{
+    .__getitem__ = py.method(subscript_get, .{ .doc = "Get item by key" }),
+    .__setitem__ = py.method(subscript_set, .{ .doc = "Set item by key" }),
+    .__delitem__ = py.method(subscript_del, .{ .doc = "Delete item by key" }),
+});
+
+fn subscript_get(self: py.Object, key: []const u8) !i64 {
+    const store_obj = try self.getAttrOrNull("_store") orelse {
+        return py.raise(.KeyError, "missing key");
+    };
+    defer store_obj.deinit();
+    const store: py.Dict = try .fromObject(store_obj);
+    const item = try store.getItem([]const u8, key);
+    if (item == null) return py.raise(.KeyError, "missing key");
+    return item.?.as(i64);
+}
+
+fn subscript_set(self: py.Object, key: []const u8, value: i64) !void {
+    const store_obj = try self.getAttrOrNull("_store") orelse {
+        var dict: py.Dict = try .init();
+        defer dict.deinit();
+        const dict_ref = dict.obj.incref();
+        try self.setAttr("_store", py.Object, dict_ref);
+        return dict.setItem([]const u8, key, i64, value);
+    };
+    defer store_obj.deinit();
+    const store = try py.Dict.fromObject(store_obj);
+    try store.setItem([]const u8, key, i64, value);
+}
+
+fn subscript_del(self: py.Object, key: []const u8) !void {
+    const store_obj = try self.getAttrOrNull("_store") orelse {
+        return py.raise(.KeyError, "missing key");
+    };
+    defer store_obj.deinit();
+    const result = try store_obj.callMethod1("__delitem__", []const u8, key);
+    result.deinit();
+}
+
+// Comparison operators
+const ComparePoint = py.class("ComparePoint", "Class for comparison operator testing.", .{
+    .__eq__ = py.method(point_eq, .{ .doc = "Compare equality" }),
+    .__lt__ = py.method(point_lt, .{ .doc = "Compare less-than" }),
+    .__le__ = py.method(point_le, .{ .doc = "Compare less-or-equal" }),
+    .__gt__ = py.method(point_gt, .{ .doc = "Compare greater-than" }),
+    .__ge__ = py.method(point_ge, .{ .doc = "Compare greater-or-equal" }),
+    .__ne__ = py.method(point_ne, .{ .doc = "Compare not-equal" }),
+});
+
+fn point_value(obj: py.Object) !i64 {
+    const value_obj = try obj.getAttr("value");
+    defer value_obj.deinit();
+    return value_obj.as(i64);
+}
+
+fn point_eq(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) == (try point_value(other));
+}
+
+fn point_lt(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) < (try point_value(other));
+}
+
+fn point_le(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) <= (try point_value(other));
+}
+
+fn point_gt(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) > (try point_value(other));
+}
+
+fn point_ge(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) >= (try point_value(other));
+}
+
+fn point_ne(self: py.Object, other: py.Object) !bool {
+    return (try point_value(self)) != (try point_value(other));
+}
+
+// Numeric operators
+const NumberBox = py.class("NumberBox", "Class for numeric operator testing.", .{
+    .__add__ = py.method(number_add, .{ .doc = "Add two boxes" }),
+    .__sub__ = py.method(number_sub, .{ .doc = "Subtract two boxes" }),
+    .__mul__ = py.method(number_mul, .{ .doc = "Multiply by a factor" }),
+    .__truediv__ = py.method(number_truediv, .{ .doc = "Divide by a factor" }),
+    .__floordiv__ = py.method(number_floordiv, .{ .doc = "Floor divide by a factor" }),
+    .__mod__ = py.method(number_mod, .{ .doc = "Modulo by a factor" }),
+    .__pow__ = py.method(number_pow, .{ .doc = "Raise to a power" }),
+    .__divmod__ = py.method(number_divmod, .{ .doc = "Divmod with a divisor" }),
+    .__matmul__ = py.method(number_matmul, .{ .doc = "Matrix multiply" }),
+    .__neg__ = py.method(number_neg, .{ .doc = "Negate value" }),
+    .__pos__ = py.method(number_pos, .{ .doc = "Positive value" }),
+    .__abs__ = py.method(number_abs, .{ .doc = "Absolute value" }),
+    .__invert__ = py.method(number_invert, .{ .doc = "Bitwise invert" }),
+    .__and__ = py.method(number_and, .{ .doc = "Bitwise and" }),
+    .__or__ = py.method(number_or, .{ .doc = "Bitwise or" }),
+    .__xor__ = py.method(number_xor, .{ .doc = "Bitwise xor" }),
+    .__lshift__ = py.method(number_lshift, .{ .doc = "Left shift" }),
+    .__rshift__ = py.method(number_rshift, .{ .doc = "Right shift" }),
+    .__int__ = py.method(number_int, .{ .doc = "Convert to int" }),
+    .__float__ = py.method(number_float, .{ .doc = "Convert to float" }),
+    .__index__ = py.method(number_index, .{ .doc = "Convert to index" }),
+    .__iadd__ = py.method(number_iadd, .{ .doc = "In-place add" }),
+    .__isub__ = py.method(number_isub, .{ .doc = "In-place subtract" }),
+    .__imul__ = py.method(number_imul, .{ .doc = "In-place multiply" }),
+    .__itruediv__ = py.method(number_itruediv, .{ .doc = "In-place true divide" }),
+    .__ifloordiv__ = py.method(number_ifloordiv, .{ .doc = "In-place floor divide" }),
+    .__imod__ = py.method(number_imod, .{ .doc = "In-place modulo" }),
+    .__ipow__ = py.method(number_ipow, .{ .doc = "In-place power" }),
+    .__iand__ = py.method(number_iand, .{ .doc = "In-place and" }),
+    .__ior__ = py.method(number_ior, .{ .doc = "In-place or" }),
+    .__ixor__ = py.method(number_ixor, .{ .doc = "In-place xor" }),
+    .__ilshift__ = py.method(number_ilshift, .{ .doc = "In-place left shift" }),
+    .__irshift__ = py.method(number_irshift, .{ .doc = "In-place right shift" }),
+    .__imatmul__ = py.method(number_imatmul, .{ .doc = "In-place matrix multiply" }),
+});
+
+fn number_value(obj: py.Object) !i64 {
+    const value_obj = try obj.getAttr("value");
+    defer value_obj.deinit();
+    return value_obj.as(i64);
+}
+
+fn number_add(self: py.Object, other: py.Object) !i64 {
+    return (try number_value(self)) + (try number_value(other));
+}
+
+fn number_sub(self: py.Object, other: py.Object) !i64 {
+    return (try number_value(self)) - (try number_value(other));
+}
+
+fn number_mul(self: py.Object, factor: i64) !i64 {
+    return (try number_value(self)) * factor;
+}
+
+fn number_truediv(self: py.Object, divisor: f64) !f64 {
+    if (divisor == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    return @as(f64, @floatFromInt(try number_value(self))) / divisor;
+}
+
+fn number_floordiv(self: py.Object, divisor: i64) !i64 {
+    if (divisor == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    return @divFloor(try number_value(self), divisor);
+}
+
+fn number_mod(self: py.Object, divisor: i64) !i64 {
+    if (divisor == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    return @mod(try number_value(self), divisor);
+}
+
+fn number_pow(self: py.Object, exponent: i64, mod: ?i64) !i64 {
+    if (exponent < 0) {
+        return py.raise(.ValueError, "negative exponent");
+    }
+    var result: i64 = 1;
+    var base: i64 = try number_value(self);
+    var exp: i64 = exponent;
+
+    if (mod) |modulus| {
+        if (modulus == 0) {
+            return py.raise(.ZeroDivisionError, "pow() modulus is zero");
+        }
+        base = @mod(base, modulus);
+        result = @mod(result, modulus);
+        while (exp > 0) : (exp >>= 1) {
+            if ((exp & 1) != 0) {
+                result = @mod(result * base, modulus);
+            }
+            base = @mod(base * base, modulus);
+        }
+        return result;
+    }
+
+    while (exp > 0) : (exp >>= 1) {
+        if ((exp & 1) != 0) {
+            result *= base;
+        }
+        base *= base;
+    }
+    return result;
+}
+
+fn number_divmod(self: py.Object, divisor: i64) !py.Tuple {
+    if (divisor == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    const value: i64 = try number_value(self);
+    const quotient: i64 = @divFloor(value, divisor);
+    const remainder: i64 = @mod(value, divisor);
+    var out: py.Tuple = try .init(2);
+    errdefer out.deinit();
+    try out.set(i64, 0, quotient);
+    try out.set(i64, 1, remainder);
+    return out;
+}
+
+fn number_matmul(self: py.Object, other: py.Object) !i64 {
+    return (try number_value(self)) * (try number_value(other));
+}
+
+fn number_neg(self: py.Object) !i64 {
+    return -(try number_value(self));
+}
+
+fn number_pos(self: py.Object) !i64 {
+    return number_value(self);
+}
+
+fn number_abs(self: py.Object) !i64 {
+    const value: i64 = try number_value(self);
+    if (value == std.math.minInt(i64)) {
+        return py.raise(.OverflowError, "absolute value overflow");
+    }
+    return if (value < 0) -value else value;
+}
+
+fn number_invert(self: py.Object) !i64 {
+    return ~(try number_value(self));
+}
+
+fn number_and(self: py.Object, other: i64) !i64 {
+    return (try number_value(self)) & other;
+}
+
+fn number_or(self: py.Object, other: i64) !i64 {
+    return (try number_value(self)) | other;
+}
+
+fn number_xor(self: py.Object, other: i64) !i64 {
+    return (try number_value(self)) ^ other;
+}
+
+fn number_lshift(self: py.Object, amount: i64) !i64 {
+    if (amount < 0) {
+        return py.raise(.ValueError, "negative shift count");
+    }
+    if (amount > 63) {
+        return py.raise(.OverflowError, "shift count out of range");
+    }
+    const shift: u6 = @intCast(amount);
+    return (try number_value(self)) << shift;
+}
+
+fn number_rshift(self: py.Object, amount: i64) !i64 {
+    if (amount < 0) {
+        return py.raise(.ValueError, "negative shift count");
+    }
+    if (amount > 63) {
+        return py.raise(.OverflowError, "shift count out of range");
+    }
+    const shift: u6 = @intCast(amount);
+    return (try number_value(self)) >> shift;
+}
+
+fn number_int(self: py.Object) !i64 {
+    return number_value(self);
+}
+
+fn number_float(self: py.Object) !f64 {
+    return @as(f64, @floatFromInt(try number_value(self)));
+}
+
+fn number_index(self: py.Object) !i64 {
+    return number_value(self);
+}
+
+fn set_number_value(self: py.Object, value: i64) !void {
+    try self.setAttr("value", i64, value);
+}
+
+fn number_iadd(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) + other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_isub(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) - other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_imul(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) * other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_itruediv(self: py.Object, other: i64) !py.Object {
+    if (other == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    const next: i64 = @divTrunc(try number_value(self), other);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_ifloordiv(self: py.Object, other: i64) !py.Object {
+    if (other == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    const next: i64 = @divFloor(try number_value(self), other);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_imod(self: py.Object, other: i64) !py.Object {
+    if (other == 0) {
+        return py.raise(.ZeroDivisionError, "division by zero");
+    }
+    const next: i64 = @mod(try number_value(self), other);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_ipow(self: py.Object, exponent: i64, mod: ?i64) !py.Object {
+    const next: i64 = try number_pow(self, exponent, mod);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_iand(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) & other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_ior(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) | other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_ixor(self: py.Object, other: i64) !py.Object {
+    const next: i64 = (try number_value(self)) ^ other;
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_ilshift(self: py.Object, amount: i64) !py.Object {
+    const next: i64 = try number_lshift(self, amount);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_irshift(self: py.Object, amount: i64) !py.Object {
+    const next: i64 = try number_rshift(self, amount);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+fn number_imatmul(self: py.Object, other: py.Object) !py.Object {
+    const next: i64 = try number_matmul(self, other);
+    try set_number_value(self, next);
+    return self.incref();
+}
+
+// Context manager methods
+const ContextLock = py.class("ContextLock", "Class for context manager testing.", .{
+    .__enter__ = py.method(context_enter, .{ .doc = "Enter context" }),
+    .__exit__ = py.method(context_exit, .{ .doc = "Exit context" }),
+});
+
+fn context_enter(self: py.Object) !py.Object {
+    try self.setAttr("entered", bool, true);
+    return self.incref();
+}
+
+fn context_exit(
+    self: py.Object,
+    _: ?py.Object,
+    _: ?py.Object,
+    _: ?py.Object,
+) !bool {
+    try self.setAttr("exited", bool, true);
+    return false;
+}
+
+// Iterator methods
+const IterCounter = py.class("IterCounter", "Class for iterator slot testing.", .{
+    .__iter__ = py.method(itercounter_iter, .{ .doc = "Return iterator" }),
+    .__next__ = py.method(itercounter_next, .{ .doc = "Return next value" }),
+});
+
+fn itercounter_iter(self: py.Object) !py.Object {
+    return self.incref();
+}
+
+fn itercounter_next(self: py.Object) !i64 {
+    const limit_obj = try self.getAttrOrNull("limit") orelse {
+        return py.raise(.StopIteration, "iteration complete");
+    };
+    defer limit_obj.deinit();
+    const limit: i64 = try limit_obj.as(i64);
+
+    var current: i64 = 0;
+    if (try self.getAttrOrNull("current")) |current_obj| {
+        defer current_obj.deinit();
+        current = try current_obj.as(i64);
+    }
+
+    if (current >= limit) {
+        return py.raise(.StopIteration, "iteration complete");
+    }
+
+    try self.setAttr("current", i64, current + 1);
+    return current;
+}
+
+// Contains methods
+const ContainsBox = py.class("ContainsBox", "Class for __contains__ testing.", .{
+    .__contains__ = py.method(contains_check, .{ .doc = "Check membership" }),
+});
+
+fn contains_check(self: py.Object, value: i64) !bool {
+    const items_obj = try self.getAttrOrNull("items") orelse return false;
+    defer items_obj.deinit();
+
+    const items: py.List = try .fromObject(items_obj);
+    const count: usize = try items.len();
+    for (0..count) |i| {
+        const item = try items.get(i);
+        const item_value: i64 = try item.as(i64);
+        if (item_value == value) return true;
+    }
+    return false;
+}
+
+// __init__ methods
+const InitBox = py.class("InitBox", "Class for __init__ slot testing.", .{
+    .__init__ = py.method(initbox_init, .{ .doc = "Initialize with a value" }),
+});
+
+fn initbox_init(self: py.Object, value: i64) !void {
+    try self.setAttr("value", i64, value);
+}
+
+// Attribute access methods
+const AttrAccessBox = py.class("AttrAccessBox", "Class for __getattribute__/__getattr__ testing.", .{
+    .__getattribute__ = py.method(attr_getattribute, .{ .doc = "Custom attribute access" }),
+    .__getattr__ = py.method(attr_getattr, .{ .doc = "Fallback attribute access" }),
+});
+
+fn attr_getattribute(self: py.Object, name: py.Object) !py.Object {
+    const name_slice = try name.unicodeSlice();
+    if (std.mem.eql(u8, name_slice, "shadowed")) {
+        return .from([]const u8, "shadowed");
+    }
+
+    return self.genericGetAttr(name);
+}
+
+fn attr_getattr(_: py.Object, name: []const u8) !py.Object {
+    var buffer: [64]u8 = undefined;
+    const text = std.fmt.bufPrint(&buffer, "missing:{s}", .{name}) catch "missing";
+    return .from([]const u8, text);
+}
+
+const AttrSetBox = py.class("AttrSetBox", "Class for __setattr__/__delattr__ testing.", .{
+    .__setattr__ = py.method(attr_setattr, .{ .doc = "Set attribute" }),
+    .__delattr__ = py.method(attr_delattr, .{ .doc = "Delete attribute" }),
+});
+
+fn attr_setattr(self: py.Object, name: py.Object, value: py.Object) !void {
+    try self.genericSetAttr(name, value);
+}
+
+fn attr_delattr(self: py.Object, name: py.Object) !void {
+    try self.genericDelAttr(name);
+}
+
+// Descriptor methods
+const DescriptorBox = py.class("DescriptorBox", "Class for __get__/__set__/__delete__ testing.", .{
+    .__get__ = py.method(descriptor_get, .{ .doc = "Descriptor get" }),
+    .__set__ = py.method(descriptor_set, .{ .doc = "Descriptor set" }),
+    .__delete__ = py.method(descriptor_delete, .{ .doc = "Descriptor delete" }),
+});
+
+fn descriptor_get(self: py.Object, obj: ?py.Object, owner: ?py.Object) !py.Object {
+    _ = owner;
+    if (obj == null) return self.incref();
+    if (try self.getAttrOrNull("_value")) |value_obj| {
+        return value_obj;
+    }
+    return .from([]const u8, "unset");
+}
+
+fn descriptor_set(self: py.Object, obj: py.Object, value: py.Object) !void {
+    _ = obj;
+    try self.setAttr("_value", py.Object, value);
+}
+
+fn descriptor_delete(self: py.Object, obj: py.Object) !void {
+    _ = obj;
+    const name_obj: py.Object = try .from([]const u8, "_value");
+    defer name_obj.deinit();
+    try self.genericDelAttr(name_obj);
+}
+
+// __new__ methods
+const NewBox = py.class("NewBox", "Class for __new__ slot testing.", .{
+    .__new__ = py.classmethod(newbox_new, .{ .doc = "Allocate and initialize instance", .args = &.{"value"} }),
+});
+
+fn newbox_new(cls: py.Object, value: i64) !py.Object {
+    var instance = try cls.newInstance(null, null);
+    errdefer instance.deinit();
+    try instance.setAttr("value", i64, value);
+    return instance;
+}
+
+// __del__ methods
+const DelBox = py.class("DelBox", "Class for __del__ slot testing.", .{
+    .__del__ = py.method(delbox_del, .{ .doc = "Track finalizer calls" }),
+});
+
+fn delbox_del(_: py.Object) void {
+    del_count += 1;
 }

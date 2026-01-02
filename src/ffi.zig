@@ -41,6 +41,24 @@ pub inline fn pyNoneOwned() *c.PyObject {
     return obj;
 }
 
+/// Get a borrowed reference to Python NotImplemented.
+pub inline fn pyNotImplemented() *c.PyObject {
+    if (comptime @hasDecl(c, "Py_GetConstantBorrowed") and @hasDecl(c, "Py_CONSTANT_NOT_IMPLEMENTED")) {
+        return c.Py_GetConstantBorrowed(c.Py_CONSTANT_NOT_IMPLEMENTED);
+    }
+    if (comptime @hasDecl(c, "_Py_NotImplementedStruct")) {
+        return &c._Py_NotImplementedStruct;
+    }
+    @compileError("Python headers missing Py_NotImplemented");
+}
+
+/// Return an owned reference to Python NotImplemented.
+pub inline fn pyNotImplementedOwned() *c.PyObject {
+    const obj = pyNotImplemented();
+    PyObject.incRef(obj);
+    return obj;
+}
+
 /// Convert a comptime slice to a null-terminated string.
 pub inline fn cstr(comptime s: []const u8) [:0]const u8 {
     return fmt.comptimePrint("{s}\x00", .{s});
@@ -83,6 +101,15 @@ pub const PyObject = struct {
 
     pub inline fn setAttrString(obj: *c.PyObject, name: [:0]const u8, value: *c.PyObject) !void {
         return voidOrError(c.PyObject_SetAttrString(obj, @ptrCast(name.ptr), value));
+    }
+
+    /// New reference.
+    pub inline fn genericGetAttr(obj: *c.PyObject, name: *c.PyObject) !*c.PyObject {
+        return objectOrError(c.PyObject_GenericGetAttr(obj, name));
+    }
+
+    pub inline fn genericSetAttr(obj: *c.PyObject, name: *c.PyObject, value: ?*c.PyObject) !void {
+        return voidOrError(c.PyObject_GenericSetAttr(obj, name, value));
     }
 
     pub inline fn isTrue(obj: *c.PyObject) !bool {
@@ -170,16 +197,11 @@ else if (@hasDecl(c, "_PyObject_VisitManagedDict"))
     }
 else
     struct {
-        pub inline fn visit(obj: *c.PyObject, visitfn: c.visitproc, arg: ?*anyopaque) c_int {
-            _ = obj;
-            _ = visitfn;
-            _ = arg;
+        pub inline fn visit(_: *c.PyObject, _: c.visitproc, _: ?*anyopaque) c_int {
             return 0;
         }
 
-        pub inline fn clear(obj: *c.PyObject) void {
-            _ = obj;
-        }
+        pub inline fn clear(_: *c.PyObject) void {}
     };
 
 /// C API analog: PyObject_GC_* helpers.
@@ -197,6 +219,14 @@ pub const PyGC = struct {
 pub const PyErr = struct {
     pub inline fn clear() void {
         c.PyErr_Clear();
+    }
+
+    pub inline fn exceptionMatches(comptime kind: errors.Exception) bool {
+        return c.PyErr_ExceptionMatches(errors.exceptionPtr(kind)) != 0;
+    }
+
+    pub inline fn writeUnraisable(obj: *c.PyObject) void {
+        c.PyErr_WriteUnraisable(obj);
     }
 };
 

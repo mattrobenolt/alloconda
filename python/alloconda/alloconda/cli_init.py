@@ -113,7 +113,9 @@ def update_pyproject(pyproject_path: Path, package_dir: str) -> bool:
         project.add("name", project_name)
         project.add("version", "0.1.0")
         project.add("description", "Add your description here")
-        project.add("requires-python", f">={sys.version_info.major}.{sys.version_info.minor}")
+        project.add(
+            "requires-python", f">={sys.version_info.major}.{sys.version_info.minor}"
+        )
         project.add("dependencies", [])
         doc["project"] = project
     else:
@@ -252,5 +254,11 @@ def init(
     out.success(f"Wrote {out.path_style(f'python/{package_name}/__init__.py')}")
 
     out.dim("\nNext steps:")
-    out.bullet(f"Run {out._style('alloconda develop', 'cyan')} to build and install in editable mode", indent=1)
-    out.bullet(f"Or run {out._style('alloconda build', 'cyan')} to build the extension", indent=1)
+    out.bullet(
+        f"Run {out._style('alloconda develop', 'cyan')} to build and install in editable mode",
+        indent=1,
+    )
+    out.bullet(
+        f"Or run {out._style('alloconda build', 'cyan')} to build the extension",
+        indent=1,
+    )

@@ -18,6 +18,22 @@ const PyGC = ffi.PyGC;
 const method_mod = @import("method.zig");
 const buildMethodDefs = method_mod.buildMethodDefs;
 const callSlotFromSpec = method_mod.callSlotFromSpec;
+const newSlotFromSpec = method_mod.newSlotFromSpec;
+const delSlotFromSpec = method_mod.delSlotFromSpec;
+const initSlotFromSpec = method_mod.initSlotFromSpec;
+const unarySlotFromSpec = method_mod.unarySlotFromSpec;
+const boolBinarySlotFromSpec = method_mod.boolBinarySlotFromSpec;
+const hashSlotFromSpec = method_mod.hashSlotFromSpec;
+const getAttrSlotFromSpecs = method_mod.getAttrSlotFromSpecs;
+const setAttrSlotFromSpecs = method_mod.setAttrSlotFromSpecs;
+const descrGetSlotFromSpec = method_mod.descrGetSlotFromSpec;
+const descrSetSlotFromSpecs = method_mod.descrSetSlotFromSpecs;
+const seqItemSlotFromSpec = method_mod.seqItemSlotFromSpec;
+const seqRepeatSlotFromSpec = method_mod.seqRepeatSlotFromSpec;
+const seqAssItemSlotFromSpecs = method_mod.seqAssItemSlotFromSpecs;
+const richCompareSlotFromSpecs = method_mod.richCompareSlotFromSpecs;
+const mappingSlotsFromSpecs = method_mod.mappingSlotsFromSpecs;
+const numberSlotsFromSpecs = method_mod.numberSlotsFromSpecs;
 const py_types = @import("types.zig");
 const toPy = py_types.toPy;
 
@@ -259,6 +275,372 @@ pub const Class = struct {
     }
 };
 
+const SlotConfig = struct {
+    call: ?*anyopaque = null,
+    init: ?*anyopaque = null,
+    new: ?*anyopaque = null,
+    del: ?*anyopaque = null,
+    repr: ?*anyopaque = null,
+    str: ?*anyopaque = null,
+    hash: ?*anyopaque = null,
+    richcompare: ?*anyopaque = null,
+    iter: ?*anyopaque = null,
+    iternext: ?*anyopaque = null,
+    getattro: ?*anyopaque = null,
+    setattro: ?*anyopaque = null,
+    descr_get: ?*anyopaque = null,
+    descr_set: ?*anyopaque = null,
+    mp_length: ?*anyopaque = null,
+    mp_subscript: ?*anyopaque = null,
+    mp_ass_subscript: ?*anyopaque = null,
+    sq_length: ?*anyopaque = null,
+    sq_item: ?*anyopaque = null,
+    sq_ass_item: ?*anyopaque = null,
+    sq_contains: ?*anyopaque = null,
+    sq_concat: ?*anyopaque = null,
+    sq_repeat: ?*anyopaque = null,
+    sq_inplace_concat: ?*anyopaque = null,
+    sq_inplace_repeat: ?*anyopaque = null,
+    nb_add: ?*anyopaque = null,
+    nb_subtract: ?*anyopaque = null,
+    nb_multiply: ?*anyopaque = null,
+    nb_true_divide: ?*anyopaque = null,
+    nb_floor_divide: ?*anyopaque = null,
+    nb_remainder: ?*anyopaque = null,
+    nb_power: ?*anyopaque = null,
+    nb_divmod: ?*anyopaque = null,
+    nb_matrix_multiply: ?*anyopaque = null,
+    nb_negative: ?*anyopaque = null,
+    nb_positive: ?*anyopaque = null,
+    nb_absolute: ?*anyopaque = null,
+    nb_invert: ?*anyopaque = null,
+    nb_and: ?*anyopaque = null,
+    nb_or: ?*anyopaque = null,
+    nb_xor: ?*anyopaque = null,
+    nb_lshift: ?*anyopaque = null,
+    nb_rshift: ?*anyopaque = null,
+    nb_int: ?*anyopaque = null,
+    nb_float: ?*anyopaque = null,
+    nb_index: ?*anyopaque = null,
+    nb_bool: ?*anyopaque = null,
+    nb_inplace_add: ?*anyopaque = null,
+    nb_inplace_subtract: ?*anyopaque = null,
+    nb_inplace_multiply: ?*anyopaque = null,
+    nb_inplace_true_divide: ?*anyopaque = null,
+    nb_inplace_floor_divide: ?*anyopaque = null,
+    nb_inplace_remainder: ?*anyopaque = null,
+    nb_inplace_power: ?*anyopaque = null,
+    nb_inplace_and: ?*anyopaque = null,
+    nb_inplace_or: ?*anyopaque = null,
+    nb_inplace_xor: ?*anyopaque = null,
+    nb_inplace_lshift: ?*anyopaque = null,
+    nb_inplace_rshift: ?*anyopaque = null,
+    nb_inplace_matrix_multiply: ?*anyopaque = null,
+};
+
+fn buildSlotConfig(comptime methods: anytype) SlotConfig {
+    const MethodsType = @TypeOf(methods);
+    const call_slot = comptime findCallSlot(methods);
+
+    const init_slot = if (comptime @hasField(MethodsType, "__init__")) blk: {
+        const spec = @field(methods, "__init__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk initSlotFromSpec(Func, kind, spec);
+    } else null;
+
+    const new_slot = if (comptime @hasField(MethodsType, "__new__")) blk: {
+        const spec = @field(methods, "__new__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk newSlotFromSpec(Func, kind, spec);
+    } else null;
+
+    const del_slot = if (comptime @hasField(MethodsType, "__del__")) blk: {
+        const spec = @field(methods, "__del__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk delSlotFromSpec(Func, kind, spec);
+    } else null;
+
+    const repr_slot = if (comptime @hasField(MethodsType, "__repr__")) blk: {
+        const spec = @field(methods, "__repr__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk unarySlotFromSpec(Func, kind, spec, "__repr__");
+    } else null;
+
+    const str_slot = if (comptime @hasField(MethodsType, "__str__")) blk: {
+        const spec = @field(methods, "__str__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk unarySlotFromSpec(Func, kind, spec, "__str__");
+    } else null;
+
+    const hash_slot = if (comptime @hasField(MethodsType, "__hash__")) blk: {
+        const spec = @field(methods, "__hash__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk hashSlotFromSpec(Func, kind, spec, "__hash__");
+    } else null;
+
+    const iter_slot = if (comptime @hasField(MethodsType, "__iter__")) blk: {
+        const spec = @field(methods, "__iter__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk unarySlotFromSpec(Func, kind, spec, "__iter__");
+    } else null;
+
+    const iternext_slot = if (comptime @hasField(MethodsType, "__next__")) blk: {
+        const spec = @field(methods, "__next__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk unarySlotFromSpec(Func, kind, spec, "__next__");
+    } else null;
+
+    const GetAttrSpecs = struct {
+        pub const getattribute = if (@hasField(MethodsType, "__getattribute__"))
+            @field(methods, "__getattribute__")
+        else
+            null;
+        pub const getattr = if (@hasField(MethodsType, "__getattr__"))
+            @field(methods, "__getattr__")
+        else
+            null;
+    };
+
+    const getattro_slot = getAttrSlotFromSpecs(GetAttrSpecs);
+
+    const SetAttrSpecs = struct {
+        pub const set = if (@hasField(MethodsType, "__setattr__"))
+            @field(methods, "__setattr__")
+        else
+            null;
+        pub const del = if (@hasField(MethodsType, "__delattr__"))
+            @field(methods, "__delattr__")
+        else
+            null;
+    };
+
+    const setattro_slot = setAttrSlotFromSpecs(SetAttrSpecs);
+
+    const descr_get_slot = if (comptime @hasField(MethodsType, "__get__")) blk: {
+        const spec = @field(methods, "__get__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk descrGetSlotFromSpec(Func, kind, spec, "__get__");
+    } else null;
+
+    const DescrSetSpecs = struct {
+        pub const set = if (@hasField(MethodsType, "__set__")) @field(methods, "__set__") else null;
+        pub const del = if (@hasField(MethodsType, "__delete__")) @field(methods, "__delete__") else null;
+    };
+
+    const descr_set_slot = descrSetSlotFromSpecs(DescrSetSpecs);
+
+    const contains_slot = if (comptime @hasField(MethodsType, "__contains__")) blk: {
+        const spec = @field(methods, "__contains__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk boolBinarySlotFromSpec(Func, kind, spec, "__contains__");
+    } else null;
+
+    const RichCompareSpecs = struct {
+        pub const eq = if (@hasField(MethodsType, "__eq__")) @field(methods, "__eq__") else null;
+        pub const ne = if (@hasField(MethodsType, "__ne__")) @field(methods, "__ne__") else null;
+        pub const lt = if (@hasField(MethodsType, "__lt__")) @field(methods, "__lt__") else null;
+        pub const le = if (@hasField(MethodsType, "__le__")) @field(methods, "__le__") else null;
+        pub const gt = if (@hasField(MethodsType, "__gt__")) @field(methods, "__gt__") else null;
+        pub const ge = if (@hasField(MethodsType, "__ge__")) @field(methods, "__ge__") else null;
+    };
+
+    const richcompare_slot = richCompareSlotFromSpecs(RichCompareSpecs);
+
+    const MappingSpecs = struct {
+        pub const get = if (@hasField(MethodsType, "__getitem__"))
+            @field(methods, "__getitem__")
+        else
+            null;
+        pub const set = if (@hasField(MethodsType, "__setitem__"))
+            @field(methods, "__setitem__")
+        else
+            null;
+        pub const del = if (@hasField(MethodsType, "__delitem__"))
+            @field(methods, "__delitem__")
+        else
+            null;
+        pub const len = if (@hasField(MethodsType, "__len__"))
+            @field(methods, "__len__")
+        else
+            null;
+    };
+
+    const mapping_slots = mappingSlotsFromSpecs(MappingSpecs);
+
+    const SequenceSpecs = struct {
+        pub const get = if (@hasField(MethodsType, "__getitem__")) @field(methods, "__getitem__") else null;
+        pub const set = if (@hasField(MethodsType, "__setitem__")) @field(methods, "__setitem__") else null;
+        pub const del = if (@hasField(MethodsType, "__delitem__")) @field(methods, "__delitem__") else null;
+        pub const contains = if (@hasField(MethodsType, "__contains__")) @field(methods, "__contains__") else null;
+        pub const concat = if (@hasField(MethodsType, "__add__")) @field(methods, "__add__") else null;
+        pub const repeat = if (@hasField(MethodsType, "__mul__")) @field(methods, "__mul__") else null;
+        pub const inplace_concat = if (@hasField(MethodsType, "__iadd__")) @field(methods, "__iadd__") else null;
+        pub const inplace_repeat = if (@hasField(MethodsType, "__imul__")) @field(methods, "__imul__") else null;
+    };
+
+    const NumberSpecs = struct {
+        pub const add = if (@hasField(MethodsType, "__add__")) @field(methods, "__add__") else null;
+        pub const sub = if (@hasField(MethodsType, "__sub__")) @field(methods, "__sub__") else null;
+        pub const mul = if (@hasField(MethodsType, "__mul__")) @field(methods, "__mul__") else null;
+        pub const truediv = if (@hasField(MethodsType, "__truediv__"))
+            @field(methods, "__truediv__")
+        else
+            null;
+        pub const floordiv = if (@hasField(MethodsType, "__floordiv__"))
+            @field(methods, "__floordiv__")
+        else
+            null;
+        pub const mod = if (@hasField(MethodsType, "__mod__")) @field(methods, "__mod__") else null;
+        pub const pow = if (@hasField(MethodsType, "__pow__")) @field(methods, "__pow__") else null;
+        pub const divmod = if (@hasField(MethodsType, "__divmod__")) @field(methods, "__divmod__") else null;
+        pub const matmul = if (@hasField(MethodsType, "__matmul__")) @field(methods, "__matmul__") else null;
+        pub const neg = if (@hasField(MethodsType, "__neg__")) @field(methods, "__neg__") else null;
+        pub const pos = if (@hasField(MethodsType, "__pos__")) @field(methods, "__pos__") else null;
+        pub const abs = if (@hasField(MethodsType, "__abs__")) @field(methods, "__abs__") else null;
+        pub const invert = if (@hasField(MethodsType, "__invert__")) @field(methods, "__invert__") else null;
+        pub const and_op = if (@hasField(MethodsType, "__and__")) @field(methods, "__and__") else null;
+        pub const or_op = if (@hasField(MethodsType, "__or__")) @field(methods, "__or__") else null;
+        pub const xor_op = if (@hasField(MethodsType, "__xor__")) @field(methods, "__xor__") else null;
+        pub const lshift = if (@hasField(MethodsType, "__lshift__")) @field(methods, "__lshift__") else null;
+        pub const rshift = if (@hasField(MethodsType, "__rshift__")) @field(methods, "__rshift__") else null;
+        pub const as_int = if (@hasField(MethodsType, "__int__")) @field(methods, "__int__") else null;
+        pub const as_float = if (@hasField(MethodsType, "__float__")) @field(methods, "__float__") else null;
+        pub const as_index = if (@hasField(MethodsType, "__index__")) @field(methods, "__index__") else null;
+        pub const bool_method = if (@hasField(MethodsType, "__bool__")) @field(methods, "__bool__") else null;
+        pub const iadd = if (@hasField(MethodsType, "__iadd__")) @field(methods, "__iadd__") else null;
+        pub const isub = if (@hasField(MethodsType, "__isub__")) @field(methods, "__isub__") else null;
+        pub const imul = if (@hasField(MethodsType, "__imul__")) @field(methods, "__imul__") else null;
+        pub const itruediv = if (@hasField(MethodsType, "__itruediv__"))
+            @field(methods, "__itruediv__")
+        else
+            null;
+        pub const ifloordiv = if (@hasField(MethodsType, "__ifloordiv__"))
+            @field(methods, "__ifloordiv__")
+        else
+            null;
+        pub const imod = if (@hasField(MethodsType, "__imod__")) @field(methods, "__imod__") else null;
+        pub const ipow = if (@hasField(MethodsType, "__ipow__")) @field(methods, "__ipow__") else null;
+        pub const iand = if (@hasField(MethodsType, "__iand__")) @field(methods, "__iand__") else null;
+        pub const ior = if (@hasField(MethodsType, "__ior__")) @field(methods, "__ior__") else null;
+        pub const ixor = if (@hasField(MethodsType, "__ixor__")) @field(methods, "__ixor__") else null;
+        pub const ilshift = if (@hasField(MethodsType, "__ilshift__")) @field(methods, "__ilshift__") else null;
+        pub const irshift = if (@hasField(MethodsType, "__irshift__")) @field(methods, "__irshift__") else null;
+        pub const imatmul = if (@hasField(MethodsType, "__imatmul__")) @field(methods, "__imatmul__") else null;
+    };
+
+    const number_slots = numberSlotsFromSpecs(NumberSpecs);
+
+    const seq_item_slot = if (comptime @hasField(MethodsType, "__getitem__")) blk: {
+        const spec = @field(methods, "__getitem__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk seqItemSlotFromSpec(Func, kind, spec, "__getitem__");
+    } else null;
+
+    const seq_ass_item_slot = seqAssItemSlotFromSpecs(SequenceSpecs);
+
+    const seq_concat_slot = if (comptime @hasField(MethodsType, "__add__")) blk: {
+        const spec = @field(methods, "__add__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk method_mod.binarySlotFromSpec(Func, kind, spec, "__add__");
+    } else null;
+
+    const seq_repeat_slot = if (comptime @hasField(MethodsType, "__mul__")) blk: {
+        const spec = @field(methods, "__mul__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk seqRepeatSlotFromSpec(Func, kind, spec, "__mul__");
+    } else null;
+
+    const seq_inplace_concat_slot = if (comptime @hasField(MethodsType, "__iadd__")) blk: {
+        const spec = @field(methods, "__iadd__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk method_mod.binarySlotFromSpec(Func, kind, spec, "__iadd__");
+    } else null;
+
+    const seq_inplace_repeat_slot = if (comptime @hasField(MethodsType, "__imul__")) blk: {
+        const spec = @field(methods, "__imul__");
+        const Func = @TypeOf(spec.func);
+        const kind = @TypeOf(spec).kind;
+        break :blk seqRepeatSlotFromSpec(Func, kind, spec, "__imul__");
+    } else null;
+
+    return .{
+        .call = call_slot,
+        .init = init_slot,
+        .new = new_slot,
+        .del = del_slot,
+        .repr = repr_slot,
+        .str = str_slot,
+        .hash = hash_slot,
+        .richcompare = richcompare_slot,
+        .iter = iter_slot,
+        .iternext = iternext_slot,
+        .getattro = getattro_slot,
+        .setattro = setattro_slot,
+        .descr_get = descr_get_slot,
+        .descr_set = descr_set_slot,
+        .mp_length = mapping_slots.length,
+        .mp_subscript = mapping_slots.subscript,
+        .mp_ass_subscript = mapping_slots.ass_subscript,
+        .sq_length = mapping_slots.length,
+        .sq_item = seq_item_slot,
+        .sq_ass_item = seq_ass_item_slot,
+        .sq_contains = contains_slot,
+        .sq_concat = seq_concat_slot,
+        .sq_repeat = seq_repeat_slot,
+        .sq_inplace_concat = seq_inplace_concat_slot,
+        .sq_inplace_repeat = seq_inplace_repeat_slot,
+        .nb_add = number_slots.add,
+        .nb_subtract = number_slots.sub,
+        .nb_multiply = number_slots.mul,
+        .nb_true_divide = number_slots.truediv,
+        .nb_floor_divide = number_slots.floordiv,
+        .nb_remainder = number_slots.mod,
+        .nb_power = number_slots.pow,
+        .nb_divmod = number_slots.divmod,
+        .nb_matrix_multiply = number_slots.matmul,
+        .nb_negative = number_slots.neg,
+        .nb_positive = number_slots.pos,
+        .nb_absolute = number_slots.abs,
+        .nb_invert = number_slots.invert,
+        .nb_and = number_slots.and_op,
+        .nb_or = number_slots.or_op,
+        .nb_xor = number_slots.xor_op,
+        .nb_lshift = number_slots.lshift,
+        .nb_rshift = number_slots.rshift,
+        .nb_int = number_slots.as_int,
+        .nb_float = number_slots.as_float,
+        .nb_index = number_slots.as_index,
+        .nb_bool = number_slots.bool_slot,
+        .nb_inplace_add = number_slots.inplace_add,
+        .nb_inplace_subtract = number_slots.inplace_sub,
+        .nb_inplace_multiply = number_slots.inplace_mul,
+        .nb_inplace_true_divide = number_slots.inplace_truediv,
+        .nb_inplace_floor_divide = number_slots.inplace_floordiv,
+        .nb_inplace_remainder = number_slots.inplace_mod,
+        .nb_inplace_power = number_slots.inplace_pow,
+        .nb_inplace_and = number_slots.inplace_and,
+        .nb_inplace_or = number_slots.inplace_or,
+        .nb_inplace_xor = number_slots.inplace_xor,
+        .nb_inplace_lshift = number_slots.inplace_lshift,
+        .nb_inplace_rshift = number_slots.inplace_rshift,
+        .nb_inplace_matrix_multiply = number_slots.inplace_matmul,
+    };
+}
+
 /// Define a Python class with methods and an optional docstring.
 pub fn class(
     comptime name: [:0]const u8,
@@ -267,8 +649,8 @@ pub fn class(
 ) Class {
     const defs = comptime buildMethodDefs(methods);
     const methods_ptr: ?*anyopaque = @ptrCast(@constCast(&defs));
-    const call_slot = comptime findCallSlot(methods);
-    const slots = classSlots(methods_ptr, doc, call_slot);
+    const slot_config = comptime buildSlotConfig(methods);
+    const slots = classSlots(methods_ptr, doc, slot_config);
 
     return .{
         .name = name,
@@ -281,12 +663,15 @@ pub fn class(
 fn classSlots(
     comptime methods_ptr: ?*anyopaque,
     comptime doc: ?[:0]const u8,
-    comptime call_slot: ?*anyopaque,
+    comptime slot_config: SlotConfig,
 ) [*c]const c.PyType_Slot {
     // For Python 3.12+, use managed dict with GC support.
     // For older Python (3.10, 3.11), use tp_dictoffset for __dict__ support.
     const use_gc = comptime managedDictGcEnabled();
-    const new_fn: ?*anyopaque = @ptrCast(@constCast(&allocondaTypeNew));
+    const new_fn: ?*anyopaque = if (slot_config.new) |custom|
+        custom
+    else
+        @ptrCast(@constCast(&allocondaTypeNew));
     const dealloc_fn: ?*anyopaque = @ptrCast(@constCast(&allocondaTypeDealloc));
     const traverse_fn: ?*anyopaque = if (use_gc)
         @ptrCast(@constCast(&allocondaTypeTraverse))
@@ -305,95 +690,387 @@ fn classSlots(
     // to enable attribute storage on instances.
     const members_ptr: ?*anyopaque = @ptrCast(@constCast(&dictMemberDef));
 
-    if (doc) |doc_text| {
-        if (use_gc) {
-            if (call_slot) |call_fn| {
-                return @ptrCast(&[_]c.PyType_Slot{
-                    .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                    .{ .slot = c.Py_tp_call, .pfunc = call_fn },
-                    .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-                    .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-                    .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
-                    .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
-                    .{ .slot = c.Py_tp_free, .pfunc = free_fn },
-                    .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
-                    .{ .slot = 0, .pfunc = null },
-                });
-            }
-            return @ptrCast(&[_]c.PyType_Slot{
-                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-                .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
-                .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
-                .{ .slot = c.Py_tp_free, .pfunc = free_fn },
-                .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) },
-                .{ .slot = 0, .pfunc = null },
-            });
+    const Slots = buildSlotArray(
+        methods_ptr,
+        doc,
+        slot_config,
+        use_gc,
+        new_fn,
+        dealloc_fn,
+        traverse_fn,
+        clear_fn,
+        free_fn,
+        members_ptr,
+    );
+    const SlotsWrapper = struct {
+        const value = Slots;
+    };
+    return @ptrCast(&SlotsWrapper.value);
+}
+
+fn slotCount(
+    comptime slot_config: SlotConfig,
+    comptime doc: ?[:0]const u8,
+    comptime use_gc: bool,
+) usize {
+    var count: usize = 0;
+    count += 1; // Py_tp_methods
+    if (slot_config.call != null) count += 1;
+    if (slot_config.init != null) count += 1;
+    if (slot_config.del != null) count += 1;
+    if (slot_config.repr != null) count += 1;
+    if (slot_config.str != null) count += 1;
+    if (slot_config.hash != null) count += 1;
+    if (slot_config.richcompare != null) count += 1;
+    if (slot_config.iter != null) count += 1;
+    if (slot_config.iternext != null) count += 1;
+    if (slot_config.getattro != null) count += 1;
+    if (slot_config.setattro != null) count += 1;
+    if (slot_config.descr_get != null) count += 1;
+    if (slot_config.descr_set != null) count += 1;
+    if (slot_config.mp_length != null) count += 1;
+    if (slot_config.mp_subscript != null) count += 1;
+    if (slot_config.mp_ass_subscript != null) count += 1;
+    if (slot_config.sq_length != null) count += 1;
+    if (slot_config.sq_item != null) count += 1;
+    if (slot_config.sq_ass_item != null) count += 1;
+    if (slot_config.sq_contains != null) count += 1;
+    if (slot_config.sq_concat != null) count += 1;
+    if (slot_config.sq_repeat != null) count += 1;
+    if (slot_config.sq_inplace_concat != null) count += 1;
+    if (slot_config.sq_inplace_repeat != null) count += 1;
+    if (slot_config.nb_add != null) count += 1;
+    if (slot_config.nb_subtract != null) count += 1;
+    if (slot_config.nb_multiply != null) count += 1;
+    if (slot_config.nb_true_divide != null) count += 1;
+    if (slot_config.nb_floor_divide != null) count += 1;
+    if (slot_config.nb_remainder != null) count += 1;
+    if (slot_config.nb_power != null) count += 1;
+    if (slot_config.nb_divmod != null) count += 1;
+    if (slot_config.nb_matrix_multiply != null) count += 1;
+    if (slot_config.nb_negative != null) count += 1;
+    if (slot_config.nb_positive != null) count += 1;
+    if (slot_config.nb_absolute != null) count += 1;
+    if (slot_config.nb_invert != null) count += 1;
+    if (slot_config.nb_and != null) count += 1;
+    if (slot_config.nb_or != null) count += 1;
+    if (slot_config.nb_xor != null) count += 1;
+    if (slot_config.nb_lshift != null) count += 1;
+    if (slot_config.nb_rshift != null) count += 1;
+    if (slot_config.nb_int != null) count += 1;
+    if (slot_config.nb_float != null) count += 1;
+    if (slot_config.nb_index != null) count += 1;
+    if (slot_config.nb_bool != null) count += 1;
+    if (slot_config.nb_inplace_add != null) count += 1;
+    if (slot_config.nb_inplace_subtract != null) count += 1;
+    if (slot_config.nb_inplace_multiply != null) count += 1;
+    if (slot_config.nb_inplace_true_divide != null) count += 1;
+    if (slot_config.nb_inplace_floor_divide != null) count += 1;
+    if (slot_config.nb_inplace_remainder != null) count += 1;
+    if (slot_config.nb_inplace_power != null) count += 1;
+    if (slot_config.nb_inplace_and != null) count += 1;
+    if (slot_config.nb_inplace_or != null) count += 1;
+    if (slot_config.nb_inplace_xor != null) count += 1;
+    if (slot_config.nb_inplace_lshift != null) count += 1;
+    if (slot_config.nb_inplace_rshift != null) count += 1;
+    if (slot_config.nb_inplace_matrix_multiply != null) count += 1;
+
+    count += 2; // Py_tp_new + Py_tp_dealloc
+    if (use_gc) {
+        count += 3; // traverse/clear/free
+    } else {
+        count += 1; // Py_tp_members
+    }
+    if (use_gc and doc != null) count += 1;
+    count += 1; // sentinel
+    return count;
+}
+
+fn buildSlotArray(
+    comptime methods_ptr: ?*anyopaque,
+    comptime doc: ?[:0]const u8,
+    comptime slot_config: SlotConfig,
+    comptime use_gc: bool,
+    comptime new_fn: ?*anyopaque,
+    comptime dealloc_fn: ?*anyopaque,
+    comptime traverse_fn: ?*anyopaque,
+    comptime clear_fn: ?*anyopaque,
+    comptime free_fn: ?*anyopaque,
+    comptime members_ptr: ?*anyopaque,
+) [slotCount(slot_config, doc, use_gc)]c.PyType_Slot {
+    var slots: [slotCount(slot_config, doc, use_gc)]c.PyType_Slot = undefined;
+    var i: usize = 0;
+
+    slots[i] = .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr };
+    i += 1;
+
+    if (slot_config.call) |call_fn| {
+        slots[i] = .{ .slot = c.Py_tp_call, .pfunc = call_fn };
+        i += 1;
+    }
+    if (slot_config.init) |init_fn| {
+        slots[i] = .{ .slot = c.Py_tp_init, .pfunc = init_fn };
+        i += 1;
+    }
+    if (slot_config.del) |del_fn| {
+        if (comptime @hasDecl(c, "Py_tp_finalize")) {
+            slots[i] = .{ .slot = c.Py_tp_finalize, .pfunc = del_fn };
+        } else {
+            slots[i] = .{ .slot = c.Py_tp_del, .pfunc = del_fn };
         }
+        i += 1;
+    }
+    if (slot_config.repr) |repr_fn| {
+        slots[i] = .{ .slot = c.Py_tp_repr, .pfunc = repr_fn };
+        i += 1;
+    }
+    if (slot_config.str) |str_fn| {
+        slots[i] = .{ .slot = c.Py_tp_str, .pfunc = str_fn };
+        i += 1;
+    }
+    if (slot_config.hash) |hash_fn| {
+        slots[i] = .{ .slot = c.Py_tp_hash, .pfunc = hash_fn };
+        i += 1;
+    }
+    if (slot_config.richcompare) |rc_fn| {
+        slots[i] = .{ .slot = c.Py_tp_richcompare, .pfunc = rc_fn };
+        i += 1;
+    }
+    if (slot_config.iter) |iter_fn| {
+        slots[i] = .{ .slot = c.Py_tp_iter, .pfunc = iter_fn };
+        i += 1;
+    }
+    if (slot_config.iternext) |next_fn| {
+        slots[i] = .{ .slot = c.Py_tp_iternext, .pfunc = next_fn };
+        i += 1;
+    }
+    if (slot_config.getattro) |getattr_fn| {
+        slots[i] = .{ .slot = c.Py_tp_getattro, .pfunc = getattr_fn };
+        i += 1;
+    }
+    if (slot_config.setattro) |setattr_fn| {
+        slots[i] = .{ .slot = c.Py_tp_setattro, .pfunc = setattr_fn };
+        i += 1;
+    }
+    if (slot_config.descr_get) |get_fn| {
+        slots[i] = .{ .slot = c.Py_tp_descr_get, .pfunc = get_fn };
+        i += 1;
+    }
+    if (slot_config.descr_set) |set_fn| {
+        slots[i] = .{ .slot = c.Py_tp_descr_set, .pfunc = set_fn };
+        i += 1;
+    }
+    if (slot_config.mp_length) |len_fn| {
+        slots[i] = .{ .slot = c.Py_mp_length, .pfunc = len_fn };
+        i += 1;
+    }
+    if (slot_config.mp_subscript) |sub_fn| {
+        slots[i] = .{ .slot = c.Py_mp_subscript, .pfunc = sub_fn };
+        i += 1;
+    }
+    if (slot_config.mp_ass_subscript) |ass_fn| {
+        slots[i] = .{ .slot = c.Py_mp_ass_subscript, .pfunc = ass_fn };
+        i += 1;
+    }
+    if (slot_config.sq_length) |len_fn| {
+        slots[i] = .{ .slot = c.Py_sq_length, .pfunc = len_fn };
+        i += 1;
+    }
+    if (slot_config.sq_item) |item_fn| {
+        slots[i] = .{ .slot = c.Py_sq_item, .pfunc = item_fn };
+        i += 1;
+    }
+    if (slot_config.sq_ass_item) |ass_fn| {
+        slots[i] = .{ .slot = c.Py_sq_ass_item, .pfunc = ass_fn };
+        i += 1;
+    }
+    if (slot_config.sq_contains) |contains_fn| {
+        slots[i] = .{ .slot = c.Py_sq_contains, .pfunc = contains_fn };
+        i += 1;
+    }
+    if (slot_config.sq_concat) |concat_fn| {
+        slots[i] = .{ .slot = c.Py_sq_concat, .pfunc = concat_fn };
+        i += 1;
+    }
+    if (slot_config.sq_repeat) |repeat_fn| {
+        slots[i] = .{ .slot = c.Py_sq_repeat, .pfunc = repeat_fn };
+        i += 1;
+    }
+    if (slot_config.sq_inplace_concat) |concat_fn| {
+        slots[i] = .{ .slot = c.Py_sq_inplace_concat, .pfunc = concat_fn };
+        i += 1;
+    }
+    if (slot_config.sq_inplace_repeat) |repeat_fn| {
+        slots[i] = .{ .slot = c.Py_sq_inplace_repeat, .pfunc = repeat_fn };
+        i += 1;
+    }
+    if (slot_config.nb_add) |add_fn| {
+        slots[i] = .{ .slot = c.Py_nb_add, .pfunc = add_fn };
+        i += 1;
+    }
+    if (slot_config.nb_subtract) |sub_fn| {
+        slots[i] = .{ .slot = c.Py_nb_subtract, .pfunc = sub_fn };
+        i += 1;
+    }
+    if (slot_config.nb_multiply) |mul_fn| {
+        slots[i] = .{ .slot = c.Py_nb_multiply, .pfunc = mul_fn };
+        i += 1;
+    }
+    if (slot_config.nb_true_divide) |div_fn| {
+        slots[i] = .{ .slot = c.Py_nb_true_divide, .pfunc = div_fn };
+        i += 1;
+    }
+    if (slot_config.nb_floor_divide) |div_fn| {
+        slots[i] = .{ .slot = c.Py_nb_floor_divide, .pfunc = div_fn };
+        i += 1;
+    }
+    if (slot_config.nb_remainder) |mod_fn| {
+        slots[i] = .{ .slot = c.Py_nb_remainder, .pfunc = mod_fn };
+        i += 1;
+    }
+    if (slot_config.nb_power) |pow_fn| {
+        slots[i] = .{ .slot = c.Py_nb_power, .pfunc = pow_fn };
+        i += 1;
+    }
+    if (slot_config.nb_divmod) |divmod_fn| {
+        slots[i] = .{ .slot = c.Py_nb_divmod, .pfunc = divmod_fn };
+        i += 1;
+    }
+    if (slot_config.nb_matrix_multiply) |matmul_fn| {
+        slots[i] = .{ .slot = c.Py_nb_matrix_multiply, .pfunc = matmul_fn };
+        i += 1;
+    }
+    if (slot_config.nb_negative) |neg_fn| {
+        slots[i] = .{ .slot = c.Py_nb_negative, .pfunc = neg_fn };
+        i += 1;
+    }
+    if (slot_config.nb_positive) |pos_fn| {
+        slots[i] = .{ .slot = c.Py_nb_positive, .pfunc = pos_fn };
+        i += 1;
+    }
+    if (slot_config.nb_absolute) |abs_fn| {
+        slots[i] = .{ .slot = c.Py_nb_absolute, .pfunc = abs_fn };
+        i += 1;
+    }
+    if (slot_config.nb_invert) |invert_fn| {
+        slots[i] = .{ .slot = c.Py_nb_invert, .pfunc = invert_fn };
+        i += 1;
+    }
+    if (slot_config.nb_and) |and_fn| {
+        slots[i] = .{ .slot = c.Py_nb_and, .pfunc = and_fn };
+        i += 1;
+    }
+    if (slot_config.nb_or) |or_fn| {
+        slots[i] = .{ .slot = c.Py_nb_or, .pfunc = or_fn };
+        i += 1;
+    }
+    if (slot_config.nb_xor) |xor_fn| {
+        slots[i] = .{ .slot = c.Py_nb_xor, .pfunc = xor_fn };
+        i += 1;
+    }
+    if (slot_config.nb_lshift) |shift_fn| {
+        slots[i] = .{ .slot = c.Py_nb_lshift, .pfunc = shift_fn };
+        i += 1;
+    }
+    if (slot_config.nb_rshift) |shift_fn| {
+        slots[i] = .{ .slot = c.Py_nb_rshift, .pfunc = shift_fn };
+        i += 1;
+    }
+    if (slot_config.nb_int) |int_fn| {
+        slots[i] = .{ .slot = c.Py_nb_int, .pfunc = int_fn };
+        i += 1;
+    }
+    if (slot_config.nb_float) |float_fn| {
+        slots[i] = .{ .slot = c.Py_nb_float, .pfunc = float_fn };
+        i += 1;
+    }
+    if (slot_config.nb_index) |index_fn| {
+        slots[i] = .{ .slot = c.Py_nb_index, .pfunc = index_fn };
+        i += 1;
+    }
+    if (slot_config.nb_bool) |bool_fn| {
+        slots[i] = .{ .slot = c.Py_nb_bool, .pfunc = bool_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_add) |add_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_add, .pfunc = add_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_subtract) |sub_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_subtract, .pfunc = sub_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_multiply) |mul_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_multiply, .pfunc = mul_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_true_divide) |div_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_true_divide, .pfunc = div_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_floor_divide) |div_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_floor_divide, .pfunc = div_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_remainder) |mod_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_remainder, .pfunc = mod_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_power) |pow_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_power, .pfunc = pow_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_and) |and_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_and, .pfunc = and_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_or) |or_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_or, .pfunc = or_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_xor) |xor_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_xor, .pfunc = xor_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_lshift) |shift_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_lshift, .pfunc = shift_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_rshift) |shift_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_rshift, .pfunc = shift_fn };
+        i += 1;
+    }
+    if (slot_config.nb_inplace_matrix_multiply) |matmul_fn| {
+        slots[i] = .{ .slot = c.Py_nb_inplace_matrix_multiply, .pfunc = matmul_fn };
+        i += 1;
+    }
+
+    slots[i] = .{ .slot = c.Py_tp_new, .pfunc = new_fn };
+    i += 1;
+    slots[i] = .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn };
+    i += 1;
+
+    if (use_gc) {
+        slots[i] = .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn };
+        i += 1;
+        slots[i] = .{ .slot = c.Py_tp_clear, .pfunc = clear_fn };
+        i += 1;
+        slots[i] = .{ .slot = c.Py_tp_free, .pfunc = free_fn };
+        i += 1;
+        if (doc) |doc_text| {
+            slots[i] = .{ .slot = c.Py_tp_doc, .pfunc = @ptrCast(@constCast(doc_text.ptr)) };
+            i += 1;
+        }
+    } else {
         // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
         // NOTE: We intentionally omit Py_tp_doc for non-GC types because Python
         // tries to free() the tp_doc string on heap types, which crashes with static strings.
-        if (call_slot) |call_fn| {
-            return @ptrCast(&[_]c.PyType_Slot{
-                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                .{ .slot = c.Py_tp_call, .pfunc = call_fn },
-                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-                .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
-                .{ .slot = 0, .pfunc = null },
-            });
-        }
-        return @ptrCast(&[_]c.PyType_Slot{
-            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-            .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
-            .{ .slot = 0, .pfunc = null },
-        });
+        slots[i] = .{ .slot = c.Py_tp_members, .pfunc = members_ptr };
+        i += 1;
     }
 
-    if (use_gc) {
-        if (call_slot) |call_fn| {
-            return @ptrCast(&[_]c.PyType_Slot{
-                .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-                .{ .slot = c.Py_tp_call, .pfunc = call_fn },
-                .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-                .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-                .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
-                .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
-                .{ .slot = c.Py_tp_free, .pfunc = free_fn },
-                .{ .slot = 0, .pfunc = null },
-            });
-        }
-        return @ptrCast(&[_]c.PyType_Slot{
-            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-            .{ .slot = c.Py_tp_traverse, .pfunc = traverse_fn },
-            .{ .slot = c.Py_tp_clear, .pfunc = clear_fn },
-            .{ .slot = c.Py_tp_free, .pfunc = free_fn },
-            .{ .slot = 0, .pfunc = null },
-        });
-    }
-    // Non-GC types (Python <3.12): use Py_tp_members with __dict__ for attribute support.
-    if (call_slot) |call_fn| {
-        return @ptrCast(&[_]c.PyType_Slot{
-            .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-            .{ .slot = c.Py_tp_call, .pfunc = call_fn },
-            .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-            .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-            .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
-            .{ .slot = 0, .pfunc = null },
-        });
-    }
-    return @ptrCast(&[_]c.PyType_Slot{
-        .{ .slot = c.Py_tp_methods, .pfunc = methods_ptr },
-        .{ .slot = c.Py_tp_new, .pfunc = new_fn },
-        .{ .slot = c.Py_tp_dealloc, .pfunc = dealloc_fn },
-        .{ .slot = c.Py_tp_members, .pfunc = members_ptr },
-        .{ .slot = 0, .pfunc = null },
-    });
+    slots[i] = .{ .slot = 0, .pfunc = null };
+    return slots;
 }
 
 fn findCallSlot(comptime methods: anytype) ?*anyopaque {
@@ -477,6 +1154,13 @@ fn allocondaTypeClear(self: ?*c.PyObject) callconv(.c) c_int {
 
 fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
     const obj = self orelse return;
+
+    // Run finalizers before touching instance state.
+    if (@hasDecl(c, "PyObject_CallFinalizerFromDealloc")) {
+        if (c.PyObject_CallFinalizerFromDealloc(obj) < 0) {
+            return;
+        }
+    }
 
     // IMPORTANT: For heap types, we must save the type reference before freeing,
     // then DECREF the type AFTER freeing the object. This is critical for Python 3.11+

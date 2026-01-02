@@ -268,10 +268,10 @@ def parse_wheel_filename(filename: str) -> dict[str, str]:
 
 def print_human(data: dict[str, object], verify: bool = False) -> None:
     if "wheel" in data:
-        wheel_path = str(data['wheel'])
+        wheel_path = str(data["wheel"])
         out.section(f"Wheel: {out.path_style(wheel_path)}")
 
-        out.key_value("Extension suffix", data['extension_suffix'])
+        out.key_value("Extension suffix", data["extension_suffix"])
 
         extension_files = data.get("extension_files")
         dist_info_files = data.get("dist_info_files")
@@ -282,7 +282,7 @@ def print_human(data: dict[str, object], verify: bool = False) -> None:
         out.key_value("Dist-info files", dist_count)
 
         if data.get("dist_info_dir"):
-            out.key_value("Dist-info directory", data['dist_info_dir'])
+            out.key_value("Dist-info directory", data["dist_info_dir"])
 
         if data.get("valid") is False:
             errors = data.get("errors")
@@ -305,7 +305,7 @@ def print_human(data: dict[str, object], verify: bool = False) -> None:
         return
 
     out.section(f"Library: {out.path_style(str(data.get('library')))}")
-    out.key_value("Extension suffix", data['extension_suffix'])
-    out.key_value("Module name", data.get('module_name'))
+    out.key_value("Extension suffix", data["extension_suffix"])
+    out.key_value("Module name", data.get("module_name"))
     if "package_dir" in data:
-        out.key_value("Package directory", out.path_style(str(data.get('package_dir'))))
+        out.key_value("Package directory", out.path_style(str(data.get("package_dir"))))

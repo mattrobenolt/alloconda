@@ -210,12 +210,16 @@ def wheel_all(
         for idx, (version, target, pbs_target) in enumerate(matrix, 1):
             # In verbose mode, show more details without overwriting
             if out.is_verbose():
-                out.verbose(f"[{idx}/{len(matrix)}] Processing Python {version} → {target.platform_tag}")
+                out.verbose(
+                    f"[{idx}/{len(matrix)}] Processing Python {version} → {target.platform_tag}"
+                )
                 out.verbose_detail("pbs_target", pbs_target)
                 out.verbose_detail("arch", target.arch)
 
             # Show ephemeral status of what we're building
-            status_lines = [f"{out._style('→', 'cyan')} [{idx}/{len(matrix)}] Python {version} → {target.platform_tag}"]
+            status_lines = [
+                f"{out._style('→', 'cyan')} [{idx}/{len(matrix)}] Python {version} → {target.platform_tag}"
+            ]
             status.update(status_lines)
 
             cached = find_cached_entry(cache_dir, version, pbs_target)

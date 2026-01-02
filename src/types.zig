@@ -11,11 +11,13 @@ const PyError = errors.PyError;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
 const allocator = ffi.allocator;
+const PyErr = ffi.PyErr;
 const PyObject = ffi.PyObject;
 const PyImport = ffi.PyImport;
 const PyList = ffi.PyList;
 const PyTuple = ffi.PyTuple;
 const PyDict = ffi.PyDict;
+const PyType = ffi.PyType;
 const PyBytes = ffi.PyBytes;
 const PyUnicode = ffi.PyUnicode;
 const PyBuffer = ffi.PyBuffer;
@@ -177,9 +179,28 @@ pub const Object = struct {
         return .owned(try PyObject.callObject(self.ptr, tuple));
     }
 
+    /// Create a new instance of a type object via PyType_GenericNew.
+    pub fn newInstance(self: Object, args: ?Object, kwargs: ?Object) PyError!Object {
+        const type_obj: *c.PyTypeObject = @ptrCast(@alignCast(self.ptr));
+        const args_ptr: ?*c.PyObject = if (args) |obj| obj.ptr else null;
+        const kwargs_ptr: ?*c.PyObject = if (kwargs) |obj| obj.ptr else null;
+        return .owned(try PyType.genericNew(type_obj, args_ptr, kwargs_ptr));
+    }
+
     /// Get an attribute by name.
     pub fn getAttr(self: Object, name: [:0]const u8) PyError!Object {
         return .owned(try PyObject.getAttrString(self.ptr, name));
+    }
+
+    /// Get an attribute by name, clearing the PyErr on AttributeError.
+    pub fn getAttrOrNull(self: Object, name: [:0]const u8) PyError!?Object {
+        return self.getAttr(name) catch |err| {
+            if (PyErr.exceptionMatches(.AttributeError)) {
+                PyErr.clear();
+                return null;
+            }
+            return err;
+        };
     }
 
     /// Set an attribute by name.
@@ -187,6 +208,22 @@ pub const Object = struct {
         const value_obj = try toPy(T, value);
         defer PyObject.decRef(value_obj);
         try PyObject.setAttrString(self.ptr, name, value_obj);
+    }
+
+    /// Use Python's generic attribute lookup on a raw attribute name object.
+    pub fn genericGetAttr(self: Object, name: Object) PyError!Object {
+        return .owned(try PyObject.genericGetAttr(self.ptr, name.ptr));
+    }
+
+    /// Use Python's generic setattr on a raw attribute name object.
+    pub fn genericSetAttr(self: Object, name: Object, value: ?Object) PyError!void {
+        const value_ptr: ?*c.PyObject = if (value) |obj| obj.ptr else null;
+        try PyObject.genericSetAttr(self.ptr, name.ptr, value_ptr);
+    }
+
+    /// Use Python's generic delattr on a raw attribute name object.
+    pub fn genericDelAttr(self: Object, name: Object) PyError!void {
+        try self.genericSetAttr(name, null);
     }
 
     /// Call a method with no arguments.
@@ -370,14 +407,12 @@ pub const Int = union(enum) {
         }
         if (parsed.overflow > 0) {
             const unsigned_value = PyLong.asUnsignedLongLong(obj.ptr) catch {
-                c.PyErr_Clear();
-                const big = try BigInt.fromObject(obj);
-                return .{ .big = big };
+                PyErr.clear();
+                return .{ .big = try .fromObject(obj) };
             };
             return .{ .small = .{ .unsigned = unsigned_value } };
         }
-        const big = try BigInt.fromObject(obj);
-        return .{ .big = big };
+        return .{ .big = try .fromObject(obj) };
     }
 
     pub fn toPyObject(value: Int) PyError!*c.PyObject {

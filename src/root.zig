@@ -16,6 +16,7 @@ pub const PyObject = c.PyObject;
 pub const Py_ssize_t = c.Py_ssize_t;
 pub const allocator = ffi.allocator;
 pub const arenaAllocator = ffi.arenaAllocator;
+pub const exceptionMatches = ffi.PyErr.exceptionMatches;
 const method_mod = @import("method.zig");
 pub const MethodOptions = method_mod.MethodOptions;
 pub const MethodKind = method_mod.MethodKind;

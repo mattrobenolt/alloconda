@@ -57,7 +57,9 @@ ELLIPSIS = "⋯"
 BULLET = "▸"
 
 
-def _style(text: str, fg: str | None = None, bold: bool = False, dim: bool = False) -> str:
+def _style(
+    text: str, fg: str | None = None, bold: bool = False, dim: bool = False
+) -> str:
     """Apply color styling if supported."""
     if not supports_color():
         return text
@@ -335,7 +337,9 @@ def print_matrix(
         return
 
     all_rows = [headers] + rows if headers else rows
-    col_widths = [max(len(str(row[i])) for row in all_rows) for i in range(len(all_rows[0]))]
+    col_widths = [
+        max(len(str(row[i])) for row in all_rows) for i in range(len(all_rows[0]))
+    ]
 
     if headers:
         # Print headers
@@ -344,9 +348,13 @@ def print_matrix(
             for i in range(len(headers))
         )
         click.echo(header_row)
-        click.echo(_style("─" * sum(col_widths) + "─" * (len(headers) - 1) * 2, dim=True))
+        click.echo(
+            _style("─" * sum(col_widths) + "─" * (len(headers) - 1) * 2, dim=True)
+        )
 
     # Print data rows
     for row in rows:
-        styled_row = "  ".join(str(row[i]).ljust(col_widths[i]) for i in range(len(row)))
+        styled_row = "  ".join(
+            str(row[i]).ljust(col_widths[i]) for i in range(len(row))
+        )
         click.echo(styled_row)

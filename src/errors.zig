@@ -14,6 +14,7 @@ pub const Exception = enum {
     AttributeError,
     IndexError,
     KeyError,
+    StopIteration,
 };
 
 pub const PyError = error{PythonError};
@@ -50,7 +51,7 @@ pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) PyError {
     inline for (mapping) |entry| {
         if (err == entry.err) {
             if (entry.msg) |msg| {
-                _ = c.PyErr_SetString(exceptionPtr(entry.kind), msg);
+                setError(entry.kind, msg);
             } else {
                 setPythonErrorKind(entry.kind, err);
             }
@@ -70,9 +71,9 @@ pub fn setPythonError(err: anyerror) void {
 /// Set a Python exception of a specific kind from a Zig error.
 pub fn setPythonErrorKind(comptime kind: Exception, err: anyerror) void {
     var buf: [128]u8 = undefined;
-    const fallback: [:0]const u8 = "alloconda error";
+    const fallback = "alloconda error";
     const msg = fmt.bufPrintZ(&buf, "{s}", .{@errorName(err)}) catch fallback;
-    _ = c.PyErr_SetString(exceptionPtr(kind), msg);
+    setError(kind, msg);
 }
 
 /// Get the C pointer for a Python exception type.
@@ -87,5 +88,6 @@ pub fn exceptionPtr(comptime kind: Exception) *c.PyObject {
         .AttributeError => c.PyExc_AttributeError,
         .IndexError => c.PyExc_IndexError,
         .KeyError => c.PyExc_KeyError,
+        .StopIteration => c.PyExc_StopIteration,
     };
 }
