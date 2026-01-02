@@ -27,6 +27,22 @@ fn hello(name: []const u8) []const u8 {
 }
 ```
 
+## Module attributes
+
+Attach constants to the module with `withAttrs`:
+
+```zig
+const VERSION: []const u8 = "0.1.0";
+const DEFAULT_SIZE: i64 = 256;
+
+pub const MODULE = py.module("_hello_alloconda", "Example module", .{
+    .hello = py.function(hello, .{}),
+}).withAttrs(.{
+    .VERSION = VERSION,
+    .DEFAULT_SIZE = DEFAULT_SIZE,
+});
+```
+
 ## Method options
 
 `py.function`/`py.method`/`py.classmethod`/`py.staticmethod` always take an

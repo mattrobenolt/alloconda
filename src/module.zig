@@ -17,6 +17,8 @@ const PyManagedDict = ffi.PyManagedDict;
 const PyGC = ffi.PyGC;
 const method_mod = @import("method.zig");
 const buildMethodDefs = method_mod.buildMethodDefs;
+const py_types = @import("types.zig");
+const toPy = py_types.toPy;
 
 // ============================================================================
 // Type storage for __dict__ support
@@ -69,6 +71,7 @@ pub const Module = struct {
     doc: []const u8,
     inner: c.PyModuleDef,
     types: ?[]const Class = null,
+    attrs: ?[]const Attribute = null,
 
     /// Create a module definition with name and docstring.
     pub fn init(comptime name: []const u8, comptime doc: []const u8) Module {
@@ -103,6 +106,14 @@ pub const Module = struct {
         return self.withMethods(&defs);
     }
 
+    /// Attach module-level attributes to be registered when the module is created.
+    pub fn withAttrs(self: Module, comptime attrs: anytype) Module {
+        const defs = comptime buildAttributeDefs(attrs);
+        var next: Module = self;
+        next.attrs = &defs;
+        return next;
+    }
+
     /// Attach classes to be registered when the module is created.
     pub fn withTypes(comptime self: Module, comptime types: anytype) Module {
         const defs = comptime buildClassDefs(self.name, types);
@@ -122,6 +133,14 @@ pub const Module = struct {
         const module_obj = try PyModule.create(def);
         errdefer PyObject.decRef(module_obj);
 
+        if (self.attrs) |attr_list| {
+            for (attr_list) |attr| {
+                const value = try attr.make();
+                errdefer PyObject.decRef(value);
+                try PyModule.addObject(module_obj, attr.name, value);
+            }
+        }
+
         if (self.types) |type_list| {
             for (type_list) |class_def| {
                 try class_def.addToModule(module_obj, self.name);
@@ -138,6 +157,54 @@ pub fn module(
     comptime methods: anytype,
 ) Module {
     return Module.init(name, doc).with(methods);
+}
+
+// ============================================================================
+// Module attribute helpers
+// ============================================================================
+
+const Attribute = struct {
+    name: [:0]const u8,
+    make: *const fn () PyError!*c.PyObject,
+};
+
+fn buildAttributeDefs(comptime attrs: anytype) [attrCount(attrs)]Attribute {
+    const info = @typeInfo(@TypeOf(attrs));
+    if (info != .@"struct") {
+        @compileError("attrs must be a struct literal");
+    }
+
+    const fields = info.@"struct".fields;
+    var defs: [fields.len]Attribute = undefined;
+
+    inline for (fields, 0..) |field, i| {
+        defs[i] = buildAttributeDef(field.name, @field(attrs, field.name));
+    }
+
+    return defs;
+}
+
+fn buildAttributeDef(comptime field_name: []const u8, comptime value: anytype) Attribute {
+    const Value = @TypeOf(value);
+    const Wrapper = struct {
+        const stored: Value = value;
+
+        fn make() PyError!*c.PyObject {
+            return toPy(Value, stored);
+        }
+    };
+    return .{
+        .name = cstr(field_name),
+        .make = &Wrapper.make,
+    };
+}
+
+fn attrCount(comptime attrs: anytype) usize {
+    const info = @typeInfo(@TypeOf(attrs));
+    if (info != .@"struct") {
+        @compileError("attrs must be a struct literal");
+    }
+    return info.@"struct".fields.len;
 }
 
 // ============================================================================

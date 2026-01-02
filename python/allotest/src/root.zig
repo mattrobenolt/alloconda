@@ -98,11 +98,23 @@ pub const MODULE = py.module("_allotest", "Alloconda test suite module.", .{
     // Python interop
     .import_math_pi = py.function(import_math_pi, .{ .doc = "Import math.pi" }),
     .call_upper = py.function(call_upper, .{ .doc = "Call .upper() on a string" }),
+}).withAttrs(.{
+    .VERSION = MODULE_VERSION,
+    .DEFAULT_SIZE = DEFAULT_SIZE,
+    .ENABLED = ENABLED,
+    .OPTIONAL = OPTIONAL_NAME,
+    .PI = PI,
 }).withTypes(.{
     .Adder = Adder,
     .Counter = Counter,
     .MethodKinds = MethodKinds,
 });
+
+const MODULE_VERSION: []const u8 = "0.1.0";
+const DEFAULT_SIZE: i64 = 256;
+const ENABLED: bool = true;
+const OPTIONAL_NAME: ?[]const u8 = null;
+const PI: f64 = 3.14159;
 
 // ============================================================================
 // Basic Function Binding

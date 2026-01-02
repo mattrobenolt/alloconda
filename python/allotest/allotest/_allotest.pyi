@@ -90,6 +90,13 @@ def raise_mapped(kind: str) -> None: ...
 def import_math_pi() -> float: ...
 def call_upper(value: str) -> str: ...
 
+# Module attributes
+VERSION: str
+DEFAULT_SIZE: int
+ENABLED: bool
+OPTIONAL: str | None
+PI: float
+
 # Classes
 class Adder:
     def __init__(self) -> None: ...
