@@ -24,6 +24,9 @@
           inherit system;
           overlays = [ mattware.overlays.default ];
         };
+        wrangler = pkgs.writeShellScriptBin "wrangler" ''
+          exec ${pkgs.bun}/bin/bunx --bun wrangler@4.56.0 "$@"
+        '';
       in
       {
         devShells.default = pkgs.mkShell {
@@ -39,8 +42,9 @@
             uv
             uvShellHook
             mdbook
-            wrangler
             gh
+            bun
+            wrangler
           ];
         };
       }
