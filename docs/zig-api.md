@@ -81,6 +81,30 @@ fn hello(_: py.Object, name: []const u8) []const u8 {
 
 To allow Python subclassing, use `py.baseclass` instead of `py.class`.
 
+Attach inline payload storage with `.withPayload`, then access it with
+the typed class wrapper:
+
+```zig
+const BoxState = struct {
+    value: i64,
+};
+
+const Box = py.class("Box", "Payload-backed class", .{
+    .__init__ = py.method(box_init, .{ .args = &.{"value"} }),
+    .get = py.method(box_get, .{}),
+}).withPayload(BoxState);
+
+fn box_init(self: py.Object, value: i64) !void {
+    var state = try Box.payloadFrom(self);
+    state.value = value;
+}
+
+fn box_get(self: py.Object) !i64 {
+    const state = try Box.payloadFrom(self);
+    return state.value;
+}
+```
+
 ## Wrapper types
 
 Prefer the alloconda wrapper types (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`,

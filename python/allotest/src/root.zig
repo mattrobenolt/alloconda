@@ -97,6 +97,24 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .get_del_count = py.function(get_del_count, .{ .doc = "Return __del__ call count" }),
     .reset_del_count = py.function(reset_del_count, .{ .doc = "Reset __del__ call count" }),
 
+    // Class wrapper checks
+    .baseadder_expect = py.function(
+        baseadder_expect,
+        .{ .doc = "Check BaseAdder.fromPy on object", .args = &.{"obj"} },
+    ),
+    .baseadder_expect_exact = py.function(
+        baseadder_expect_exact,
+        .{ .doc = "Check BaseAdder.fromPyExact on object", .args = &.{"obj"} },
+    ),
+    .payloadbox_expect = py.function(
+        payloadbox_expect,
+        .{ .doc = "Check PayloadBox.fromPy on object", .args = &.{"obj"} },
+    ),
+    .payloadbox_payload_from = py.function(
+        payloadbox_payload_from,
+        .{ .doc = "Return payload value via PayloadBox.payloadFrom", .args = &.{"obj"} },
+    ),
+
     // Python interop
     .import_math_pi = py.function(import_math_pi, .{ .doc = "Import math.pi" }),
     .call_upper = py.function(call_upper, .{ .doc = "Call .upper() on a string" }),
@@ -110,6 +128,7 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .BaseAdder = BaseAdder,
     .Adder = Adder,
     .Counter = Counter,
+    .PayloadBox = PayloadBox,
     .MethodKinds = MethodKinds,
     .CallableAdder = CallableAdder,
     .DunderBasics = DunderBasics,
@@ -583,6 +602,16 @@ fn adder_identity(self: py.Object) py.Object {
     return self.incref();
 }
 
+fn baseadder_expect(obj: py.Object) !bool {
+    _ = try BaseAdder.fromPy(obj);
+    return true;
+}
+
+fn baseadder_expect_exact(obj: py.Object) !bool {
+    _ = try BaseAdder.fromPyExact(obj);
+    return true;
+}
+
 // Class with mutable state via attributes
 const Counter = py.class("Counter", "Counter class with mutable state.", .{
     .get = py.method(counter_get, .{ .doc = "Get current count" }),
@@ -620,6 +649,41 @@ fn counter_add(self: py.Object, value: i64) !i64 {
 fn counter_reset(self: py.Object) !void {
     const zero: py.Object = try .from(i64, 0);
     try self.setAttr("_count", py.Object, zero);
+}
+
+const PayloadState = struct {
+    value: i64,
+};
+
+const PayloadBox = py.class("PayloadBox", "Class with native payload storage.", .{
+    .__init__ = py.method(payloadbox_init, .{ .doc = "Initialize payload value", .args = &.{"value"} }),
+    .get = py.method(payloadbox_get, .{ .doc = "Return payload value" }),
+    .set = py.method(payloadbox_set, .{ .doc = "Set payload value", .args = &.{"value"} }),
+}).withPayload(PayloadState);
+
+fn payloadbox_init(self: py.Object, value: i64) !void {
+    const box = try PayloadBox.fromPy(self);
+    box.payload().* = .{ .value = value };
+}
+
+fn payloadbox_get(self: py.Object) !i64 {
+    const box = try PayloadBox.fromPy(self);
+    return box.payload().value;
+}
+
+fn payloadbox_set(self: py.Object, value: i64) !void {
+    const box = try PayloadBox.fromPy(self);
+    box.payload().value = value;
+}
+
+fn payloadbox_expect(obj: py.Object) !bool {
+    _ = try PayloadBox.fromPy(obj);
+    return true;
+}
+
+fn payloadbox_payload_from(obj: py.Object) !i64 {
+    const state = try PayloadBox.payloadFrom(obj);
+    return state.value;
 }
 
 // Class for classmethod/staticmethod testing

@@ -42,9 +42,7 @@ pub const Object = struct {
 
     /// Release the reference if owned.
     pub fn deinit(self: Object) void {
-        if (self.owns_ref) {
-            PyObject.decRef(self.ptr);
-        }
+        if (self.owns_ref) PyObject.decRef(self.ptr);
     }
 
     /// Increment the reference count and return an owned Object.

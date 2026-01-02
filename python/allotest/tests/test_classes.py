@@ -126,6 +126,38 @@ class TestCounter:
         assert counter2.get() == 20
 
 
+class TestPayloadBox:
+    """Test class with native payload storage."""
+
+    def test_init_and_get(self) -> None:
+        box = allotest.PayloadBox(10)
+        assert box.get() == 10
+
+    def test_set(self) -> None:
+        box = allotest.PayloadBox(1)
+        box.set(42)
+        assert box.get() == 42
+
+    def test_multiple_instances(self) -> None:
+        box1 = allotest.PayloadBox(3)
+        box2 = allotest.PayloadBox(7)
+        box1.set(9)
+        assert box1.get() == 9
+        assert box2.get() == 7
+
+    def test_payload_from_ok(self) -> None:
+        box = allotest.PayloadBox(12)
+        assert allotest.payloadbox_payload_from(box) == 12
+
+    def test_payload_from_wrong_type(self) -> None:
+        with pytest.raises(TypeError, match="expected PayloadBox"):
+            allotest.payloadbox_payload_from(allotest.Adder())
+
+    def test_frompy_wrong_type(self) -> None:
+        with pytest.raises(TypeError, match="expected PayloadBox"):
+            allotest.payloadbox_expect(allotest.Adder())
+
+
 class TestMultipleClasses:
     """Test having multiple classes in one module."""
 
@@ -174,6 +206,29 @@ class TestSubclassing:
 
         inst = PyAdder()
         assert inst.add(2, 3) == 6
+
+
+class TestClassRefs:
+    """Test class wrapper type checks."""
+
+    def test_baseadder_frompy_accepts_base(self) -> None:
+        assert allotest.baseadder_expect(allotest.BaseAdder()) is True
+
+    def test_baseadder_frompy_accepts_subclass(self) -> None:
+        class PyAdder(allotest.BaseAdder):
+            pass
+
+        assert allotest.baseadder_expect(PyAdder()) is True
+
+    def test_baseadder_frompy_exact_rejects_subclass(self) -> None:
+        class PyAdder(allotest.BaseAdder):
+            pass
+
+        with pytest.raises(TypeError, match="expected BaseAdder"):
+            allotest.baseadder_expect_exact(PyAdder())
+
+    def test_baseadder_frompy_exact_accepts_base(self) -> None:
+        assert allotest.baseadder_expect_exact(allotest.BaseAdder()) is True
 
 
 class TestClassDocstrings:

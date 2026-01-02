@@ -7,12 +7,12 @@ Attach classes to a module via `.withTypes`:
 ```zig
 const py = @import("alloconda");
 
+pub const MODULE = py.module("Example module", .{})
+    .withTypes(.{ .Greeter = Greeter });
+
 const Greeter = py.class("Greeter", "A tiny class", .{
     .hello = py.method(hello, .{}),
 });
-
-pub const MODULE = py.module("Example module", .{})
-    .withTypes(.{ .Greeter = Greeter });
 
 fn hello(_: py.Object, name: []const u8) []const u8 {
     return name;

@@ -18,6 +18,14 @@ pub const c = @cImport({
 /// PyModuleDef_HEAD_INIT - initializer for PyModuleDef.m_base.
 pub const PyModuleDef_HEAD_INIT = mem.zeroes(c.PyModuleDef_Base);
 
+/// Base object storage layout for types with __dict__ on Python <3.12.
+pub const DefaultTypeStorage = extern struct {
+    head: c.PyObject,
+    dict: ?*c.PyObject,
+};
+
+pub const DefaultDictOffset: c.Py_ssize_t = @offsetOf(DefaultTypeStorage, "dict");
+
 /// Convenience arena allocator backed by the CPython allocator.
 pub inline fn arenaAllocator() ArenaAllocator {
     return .init(allocator);
@@ -172,7 +180,31 @@ pub const PyType = struct {
     pub inline fn typePtr(obj: *c.PyObject) *c.PyTypeObject {
         return @ptrCast(c.Py_TYPE(obj));
     }
+
+    /// Return true if obj is an instance of type_obj or a subtype.
+    pub inline fn isSubtype(obj: *c.PyObject, type_obj: *c.PyTypeObject) bool {
+        return c.PyType_IsSubtype(c.Py_TYPE(obj), type_obj) != 0;
+    }
+
+    /// Return true if obj is an instance of exactly type_obj.
+    pub inline fn isExact(obj: *c.PyObject, type_obj: *c.PyTypeObject) bool {
+        return c.Py_TYPE(obj) == type_obj;
+    }
 };
+
+pub fn managedDictGcEnabled() bool {
+    if (!@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) return false;
+    const has_visit = @hasDecl(c, "PyObject_VisitManagedDict") or @hasDecl(c, "_PyObject_VisitManagedDict");
+    const has_clear = @hasDecl(c, "PyObject_ClearManagedDict") or @hasDecl(c, "_PyObject_ClearManagedDict");
+    return has_visit and has_clear and @hasDecl(c, "PyObject_GC_Del");
+}
+
+pub fn classBaseSize() usize {
+    return if (comptime managedDictGcEnabled())
+        @sizeOf(c.PyObject)
+    else
+        @sizeOf(DefaultTypeStorage);
+}
 
 /// C API analog: PyObject_VisitManagedDict / PyObject_ClearManagedDict helpers.
 pub const PyManagedDict = if (@hasDecl(c, "PyObject_VisitManagedDict"))

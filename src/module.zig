@@ -4,6 +4,7 @@ const mem = std.mem;
 
 const errors = @import("errors.zig");
 const PyError = errors.PyError;
+const raise = errors.raise;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
 const cstr = ffi.cstr;
@@ -15,6 +16,8 @@ const PyDict = ffi.PyDict;
 const PyUnicode = ffi.PyUnicode;
 const PyManagedDict = ffi.PyManagedDict;
 const PyGC = ffi.PyGC;
+const DefaultDictOffset: c.Py_ssize_t = ffi.DefaultDictOffset;
+const managedDictGcEnabled = ffi.managedDictGcEnabled;
 const method_mod = @import("method.zig");
 const buildMethodDefs = method_mod.buildMethodDefs;
 const callSlotFromSpec = method_mod.callSlotFromSpec;
@@ -35,17 +38,12 @@ const richCompareSlotFromSpecs = method_mod.richCompareSlotFromSpecs;
 const mappingSlotsFromSpecs = method_mod.mappingSlotsFromSpecs;
 const numberSlotsFromSpecs = method_mod.numberSlotsFromSpecs;
 const py_types = @import("types.zig");
+const Object = py_types.Object;
 const toPy = py_types.toPy;
 
 // ============================================================================
 // Type storage for __dict__ support
 // ============================================================================
-
-const DefaultTypeStorage = extern struct {
-    head: c.PyObject,
-    dict: ?*c.PyObject,
-};
-const DefaultDictOffset: c.Py_ssize_t = @offsetOf(DefaultTypeStorage, "dict");
 
 // Manual definition of PyMemberDef since cimport marks it as opaque.
 // This matches the C struct in structmember.h.
@@ -71,13 +69,6 @@ const dictMemberDef: [2]PyMemberDef = .{
     .{ .name = null, .type = 0, .offset = 0, .flags = 0, .doc = null },
 };
 
-fn managedDictGcEnabled() bool {
-    if (!@hasDecl(c, "Py_TPFLAGS_MANAGED_DICT")) return false;
-    const has_visit = @hasDecl(c, "PyObject_VisitManagedDict") or @hasDecl(c, "_PyObject_VisitManagedDict");
-    const has_clear = @hasDecl(c, "PyObject_ClearManagedDict") or @hasDecl(c, "_PyObject_ClearManagedDict");
-    return has_visit and has_clear and @hasDecl(c, "PyObject_GC_Del");
-}
-
 // ============================================================================
 // Module definition
 // ============================================================================
@@ -87,7 +78,7 @@ pub const Module = struct {
     name: []const u8,
     doc: []const u8,
     inner: c.PyModuleDef,
-    types: ?[]const Class = null,
+    types: ?[]const PyClass = null,
     attrs: ?[]const Attribute = null,
 
     /// Create a module definition with name and docstring.
@@ -240,30 +231,51 @@ fn attrCount(comptime attrs: anytype) usize {
 // ============================================================================
 
 /// Python class definition used with Module.withTypes.
-pub const Class = struct {
+const PyClass = struct {
     name: [:0]const u8,
     attr_name: [:0]const u8,
     slots: [*c]const c.PyType_Slot,
     doc: ?[:0]const u8,
-    is_basetype: bool,
+    is_basetype: bool = false,
+    type_ref: ?*?*c.PyTypeObject = null,
+    payload: ?PayloadInfo = null,
 
-    fn create(self: *const Class) PyError!*c.PyObject {
+    fn create(self: *const PyClass) PyError!*c.PyObject {
         var spec = c.PyType_Spec{
             .name = @ptrCast(self.name.ptr),
-            .basicsize = @intCast(classBasicSize()),
+            .basicsize = @intCast(classBasicSize(self.payload)),
             .itemsize = 0,
-            .flags = classFlags(self.is_basetype),
+            .flags = self.classFlags(),
             .slots = @constCast(self.slots),
         };
         return PyType.fromSpec(&spec);
     }
 
-    fn addToModule(self: *const Class, module_obj: *c.PyObject, module_name: []const u8) PyError!void {
+    /// Attach a Zig payload type stored inline with the Python object.
+    pub fn withPayload(comptime self: PyClass, comptime Payload: type) PyClass {
+        var next = self;
+        next.payload = .{
+            .size = @sizeOf(Payload),
+            .alignment = @alignOf(Payload),
+        };
+        return next;
+    }
+
+    /// Attach a runtime slot to store the created PyTypeObject pointer.
+    fn withTypeRef(comptime self: PyClass, ref: *?*c.PyTypeObject) PyClass {
+        var next = self;
+        next.type_ref = ref;
+        return next;
+    }
+
+    fn addToModule(self: *const PyClass, module_obj: *c.PyObject, module_name: []const u8) PyError!void {
         const type_obj = try self.create();
         var owns_ref = true;
         errdefer if (owns_ref) PyObject.decRef(type_obj);
 
         try setTypeModule(type_obj, module_name);
+        if (self.type_ref) |slot| slot.* = @ptrCast(type_obj);
+
         // For Python <3.12, we need to set tp_dictoffset manually after type creation.
         // This enables attribute storage via __dict__. The slot API doesn't support
         // setting tp_dictoffset directly, so we modify the type object here.
@@ -285,7 +297,91 @@ pub const Class = struct {
         try PyModule.addObject(module_obj, self.attr_name, type_obj);
         owns_ref = false;
     }
+
+    fn classFlags(self: *const PyClass) c_uint {
+        var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
+        if (self.is_basetype) flags |= @intCast(c.Py_TPFLAGS_BASETYPE);
+
+        // Only use MANAGED_DICT when we have the GC helpers to support it.
+        // Python 3.11 has the flag but lacks PyObject_VisitManagedDict/ClearManagedDict,
+        // so we must not set it there or we get segfaults during GC.
+        if (comptime managedDictGcEnabled()) {
+            flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
+            flags |= @intCast(c.Py_TPFLAGS_HAVE_GC);
+        }
+        return flags;
+    }
 };
+
+fn Class(comptime Payload: type, comptime base: PyClass) type {
+    return struct {
+        var type_ref: ?*c.PyTypeObject = null;
+
+        const class: PyClass = blk: {
+            var next = base.withTypeRef(&type_ref);
+            if (Payload != void) next = next.withPayload(Payload);
+            break :blk next;
+        };
+
+        /// Typed instance wrapper for this class.
+        pub const Ref = struct {
+            obj: Object,
+
+            /// Return the inline payload pointer for this instance.
+            pub fn payload(self: @This()) *Payload {
+                if (Payload == void) @compileError("class has no payload");
+                return payloadPtr(self.obj.ptr);
+            }
+        };
+
+        /// Return a new class wrapper with inline payload storage.
+        pub fn withPayload(comptime Next: type) type {
+            if (Payload != void) @compileError("withPayload already set for this class");
+            return Class(Next, base);
+        }
+
+        /// Return a checked instance wrapper (accepts subclasses).
+        pub fn fromPy(obj: Object) PyError!Ref {
+            return fromPyInner(obj, false);
+        }
+
+        /// Return a checked instance wrapper (exact type only).
+        pub fn fromPyExact(obj: Object) PyError!Ref {
+            return fromPyInner(obj, true);
+        }
+
+        /// Return the payload pointer after type-checking the object.
+        pub fn payloadFrom(obj: Object) PyError!*Payload {
+            if (Payload == void) @compileError("class has no payload");
+            const inst = try fromPy(obj);
+            return inst.payload();
+        }
+
+        fn fromPyInner(obj: Object, comptime exact: bool) PyError!Ref {
+            const type_ptr = type_ref orelse return raise(.RuntimeError, "class not initialized");
+            const matches = if (exact)
+                PyType.isExact(obj.ptr, type_ptr)
+            else
+                PyType.isSubtype(obj.ptr, type_ptr);
+            if (!matches) return raise(.TypeError, fmt.comptimePrint(
+                "expected {s}",
+                .{base.attr_name[0..base.attr_name.len]},
+            ));
+            return .{ .obj = .borrowed(obj.ptr) };
+        }
+
+        fn payloadPtr(obj: *c.PyObject) *Payload {
+            if (Payload == void) @compileError("class has no payload");
+            const info = PayloadInfo{
+                .size = @sizeOf(Payload),
+                .alignment = @alignOf(Payload),
+            };
+            const offset = payloadOffset(info);
+            const base_ptr: [*]u8 = @ptrCast(obj);
+            return @ptrCast(@alignCast(base_ptr + offset));
+        }
+    };
+}
 
 const SlotConfig = struct {
     call: ?*anyopaque = null,
@@ -654,21 +750,33 @@ fn buildSlotConfig(comptime methods: anytype) SlotConfig {
 }
 
 /// Define a Python class with methods and an optional docstring.
+/// Returns a typed class wrapper with helpers like `fromPy` and `withPayload`.
 pub fn class(
     comptime name: [:0]const u8,
     comptime doc: ?[:0]const u8,
     comptime methods: anytype,
-) Class {
-    return defineClass(false, name, doc, methods);
+) type {
+    return defineClassRef(false, name, doc, methods);
 }
 
 /// Define a Python base class that can be subclassed in Python.
+/// Returns a typed class wrapper with helpers like `fromPy` and `withPayload`.
 pub fn baseclass(
     comptime name: [:0]const u8,
     comptime doc: ?[:0]const u8,
     comptime methods: anytype,
-) Class {
-    return defineClass(true, name, doc, methods);
+) type {
+    return defineClassRef(true, name, doc, methods);
+}
+
+fn defineClassRef(
+    comptime is_basetype: bool,
+    comptime name: [:0]const u8,
+    comptime doc: ?[:0]const u8,
+    comptime methods: anytype,
+) type {
+    const base = defineClass(is_basetype, name, doc, methods);
+    return Class(void, base);
 }
 
 fn defineClass(
@@ -676,7 +784,7 @@ fn defineClass(
     comptime name: [:0]const u8,
     comptime doc: ?[:0]const u8,
     comptime methods: anytype,
-) Class {
+) PyClass {
     const defs = comptime buildMethodDefs(methods);
     const methods_ptr: ?*anyopaque = @ptrCast(@constCast(&defs));
     const slot_config = comptime buildSlotConfig(methods);
@@ -1122,30 +1230,18 @@ fn findCallSlot(comptime methods: anytype) ?*anyopaque {
     return null;
 }
 
-fn classFlags(is_basetype: bool) c_uint {
-    var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
-    if (is_basetype) {
-        flags |= @intCast(c.Py_TPFLAGS_BASETYPE);
-    }
+const PayloadInfo = struct {
+    size: usize,
+    alignment: usize,
+};
 
-    // Only use MANAGED_DICT when we have the GC helpers to support it.
-    // Python 3.11 has the flag but lacks PyObject_VisitManagedDict/ClearManagedDict,
-    // so we must not set it there or we get segfaults during GC.
-    if (comptime managedDictGcEnabled()) {
-        flags |= @intCast(c.Py_TPFLAGS_MANAGED_DICT);
-        flags |= @intCast(c.Py_TPFLAGS_HAVE_GC);
-    }
-    return flags;
+fn payloadOffset(info: PayloadInfo) usize {
+    return mem.alignForward(usize, ffi.classBaseSize(), info.alignment);
 }
 
-fn classBasicSize() usize {
-    // For Python 3.12+, MANAGED_DICT handles __dict__ storage.
-    // For older Python, we need space for the dict pointer (tp_dictoffset).
-    if (comptime managedDictGcEnabled()) {
-        return @sizeOf(c.PyObject);
-    } else {
-        return @sizeOf(DefaultTypeStorage);
-    }
+fn classBasicSize(payload_info: ?PayloadInfo) usize {
+    if (payload_info) |info| return payloadOffset(info) + info.size;
+    return ffi.classBaseSize();
 }
 
 // ============================================================================
@@ -1237,20 +1333,31 @@ fn allocondaTypeDealloc(self: ?*c.PyObject) callconv(.c) void {
 fn buildClassDefs(
     comptime module_name: []const u8,
     comptime types: anytype,
-) [classCount(types)]Class {
+) [classCount(types)]PyClass {
     const info = @typeInfo(@TypeOf(types));
     if (info != .@"struct") {
         @compileError("types must be a struct literal");
     }
 
     const fields = info.@"struct".fields;
-    var defs: [fields.len]Class = undefined;
+    var defs: [fields.len]PyClass = undefined;
 
     inline for (fields, 0..) |field, i| {
-        defs[i] = qualifyClass(module_name, @field(types, field.name));
+        const class_def = resolveClass(@field(types, field.name));
+        defs[i] = qualifyClass(module_name, class_def);
     }
 
     return defs;
+}
+
+fn resolveClass(comptime value: anytype) PyClass {
+    const ValueType = @TypeOf(value);
+    if (ValueType == PyClass) return value;
+    if (ValueType == type and @hasDecl(value, "class")) {
+        const class_def = value.class;
+        if (@TypeOf(class_def) == PyClass) return class_def;
+    }
+    @compileError("withTypes expects class definitions from py.class/py.baseclass");
 }
 
 fn classCount(comptime types: anytype) usize {
@@ -1261,7 +1368,7 @@ fn classCount(comptime types: anytype) usize {
     return info.@"struct".fields.len;
 }
 
-fn qualifyClass(comptime module_name: []const u8, comptime class_def: Class) Class {
+fn qualifyClass(comptime module_name: []const u8, comptime class_def: PyClass) PyClass {
     const raw_name = class_def.name[0..class_def.name.len];
     const full_name = if (mem.lastIndexOfScalar(u8, raw_name, '.')) |idx| blk: {
         const prefix = raw_name[0..idx];
@@ -1272,7 +1379,7 @@ fn qualifyClass(comptime module_name: []const u8, comptime class_def: Class) Cla
             ));
         }
         break :blk class_def.name;
-    } else fmt.comptimePrint("{s}.{s}\x00", .{ module_name, raw_name });
+    } else fmt.comptimePrint("{s}.{s}", .{ module_name, raw_name });
 
     return .{
         .name = full_name,
@@ -1280,6 +1387,8 @@ fn qualifyClass(comptime module_name: []const u8, comptime class_def: Class) Cla
         .slots = class_def.slots,
         .doc = class_def.doc,
         .is_basetype = class_def.is_basetype,
+        .type_ref = class_def.type_ref,
+        .payload = class_def.payload,
     };
 }
 
