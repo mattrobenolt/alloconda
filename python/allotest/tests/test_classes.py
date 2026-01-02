@@ -155,6 +155,27 @@ class TestMultipleClasses:
         assert counter.get() == 12
 
 
+class TestSubclassing:
+    """Test subclassing Zig-backed classes."""
+
+    def test_subclass_custom_method(self) -> None:
+        class PyAdder(allotest.BaseAdder):
+            def extra_method(self) -> int:
+                return self.add(1, 2)
+
+        inst = PyAdder()
+        assert inst.extra_method() == 3
+        assert isinstance(inst, allotest.BaseAdder)
+
+    def test_subclass_override(self) -> None:
+        class PyAdder(allotest.BaseAdder):
+            def add(self, a: int, b: int) -> int:
+                return super().add(a, b) + 1
+
+        inst = PyAdder()
+        assert inst.add(2, 3) == 6
+
+
 class TestClassDocstrings:
     """Test that class docstrings are preserved."""
 

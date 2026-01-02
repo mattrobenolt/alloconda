@@ -28,6 +28,7 @@ const module_mod = @import("module.zig");
 pub const Module = module_mod.Module;
 pub const Class = module_mod.Class;
 pub const class = module_mod.class;
+pub const baseclass = module_mod.baseclass;
 pub const module = module_mod.module;
 const types = @import("types.zig");
 pub const Object = types.Object;

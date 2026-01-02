@@ -79,6 +79,8 @@ fn hello(_: py.Object, name: []const u8) []const u8 {
 }
 ```
 
+To allow Python subclassing, use `py.baseclass` instead of `py.class`.
+
 ## Wrapper types
 
 Prefer the alloconda wrapper types (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`,

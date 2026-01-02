@@ -245,13 +245,14 @@ pub const Class = struct {
     attr_name: [:0]const u8,
     slots: [*c]const c.PyType_Slot,
     doc: ?[:0]const u8,
+    is_basetype: bool,
 
     fn create(self: *const Class) PyError!*c.PyObject {
         var spec = c.PyType_Spec{
             .name = @ptrCast(self.name.ptr),
             .basicsize = @intCast(classBasicSize()),
             .itemsize = 0,
-            .flags = classFlags(),
+            .flags = classFlags(self.is_basetype),
             .slots = @constCast(self.slots),
         };
         return PyType.fromSpec(&spec);
@@ -658,6 +659,24 @@ pub fn class(
     comptime doc: ?[:0]const u8,
     comptime methods: anytype,
 ) Class {
+    return defineClass(false, name, doc, methods);
+}
+
+/// Define a Python base class that can be subclassed in Python.
+pub fn baseclass(
+    comptime name: [:0]const u8,
+    comptime doc: ?[:0]const u8,
+    comptime methods: anytype,
+) Class {
+    return defineClass(true, name, doc, methods);
+}
+
+fn defineClass(
+    comptime is_basetype: bool,
+    comptime name: [:0]const u8,
+    comptime doc: ?[:0]const u8,
+    comptime methods: anytype,
+) Class {
     const defs = comptime buildMethodDefs(methods);
     const methods_ptr: ?*anyopaque = @ptrCast(@constCast(&defs));
     const slot_config = comptime buildSlotConfig(methods);
@@ -668,6 +687,7 @@ pub fn class(
         .attr_name = shortTypeName(name),
         .slots = slots,
         .doc = doc,
+        .is_basetype = is_basetype,
     };
 }
 
@@ -1102,8 +1122,12 @@ fn findCallSlot(comptime methods: anytype) ?*anyopaque {
     return null;
 }
 
-fn classFlags() c_uint {
+fn classFlags(is_basetype: bool) c_uint {
     var flags: c_uint = @intCast(c.Py_TPFLAGS_DEFAULT);
+    if (is_basetype) {
+        flags |= @intCast(c.Py_TPFLAGS_BASETYPE);
+    }
+
     // Only use MANAGED_DICT when we have the GC helpers to support it.
     // Python 3.11 has the flag but lacks PyObject_VisitManagedDict/ClearManagedDict,
     // so we must not set it there or we get segfaults during GC.
@@ -1255,6 +1279,7 @@ fn qualifyClass(comptime module_name: []const u8, comptime class_def: Class) Cla
         .attr_name = class_def.attr_name,
         .slots = class_def.slots,
         .doc = class_def.doc,
+        .is_basetype = class_def.is_basetype,
     };
 }
 

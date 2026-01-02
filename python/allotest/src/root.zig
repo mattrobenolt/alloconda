@@ -107,6 +107,7 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .OPTIONAL = OPTIONAL_NAME,
     .PI = PI,
 }).withTypes(.{
+    .BaseAdder = BaseAdder,
     .Adder = Adder,
     .Counter = Counter,
     .MethodKinds = MethodKinds,
@@ -564,6 +565,11 @@ fn call_upper(value: []const u8) ![]const u8 {
 // ============================================================================
 
 // Simple class for basic method testing
+const BaseAdder = py.baseclass("BaseAdder", "Base adder class for subclassing tests.", .{
+    .add = py.method(adder_add, .{ .doc = "Add two integers" }),
+    .identity = py.method(adder_identity, .{ .doc = "Return self" }),
+});
+
 const Adder = py.class("Adder", "Simple adder class for testing.", .{
     .add = py.method(adder_add, .{ .doc = "Add two integers" }),
     .identity = py.method(adder_identity, .{ .doc = "Return self" }),
