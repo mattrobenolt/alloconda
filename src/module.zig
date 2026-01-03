@@ -340,6 +340,12 @@ fn Class(comptime Payload: type, comptime base: PyClass) type {
             return Class(Next, base);
         }
 
+        /// Create a new instance of this class via PyType_GenericNew.
+        pub fn new() PyError!Object {
+            const type_ptr = type_ref.?;
+            return Object.borrowed(@ptrCast(type_ptr)).newInstance(null, null);
+        }
+
         /// Return a checked instance wrapper (accepts subclasses).
         pub fn fromPy(obj: Object) PyError!Ref {
             return fromPyInner(obj, false);
@@ -358,7 +364,7 @@ fn Class(comptime Payload: type, comptime base: PyClass) type {
         }
 
         fn fromPyInner(obj: Object, comptime exact: bool) PyError!Ref {
-            const type_ptr = type_ref orelse return raise(.RuntimeError, "class not initialized");
+            const type_ptr = type_ref.?;
             const matches = if (exact)
                 PyType.isExact(obj.ptr, type_ptr)
             else

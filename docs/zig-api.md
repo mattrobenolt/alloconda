@@ -105,8 +105,17 @@ fn box_get(self: py.Object) !i64 {
 }
 ```
 
+To create an instance from Zig, use `Class.new()`:
+
+```zig
+const obj = try Box.new();
+const state = try Box.payloadFrom(obj);
+state.value = 42;
+```
+
 ## Wrapper types
 
 Prefer the alloconda wrapper types (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`,
 `py.Bytes`) instead of raw CPython calls. Use `py.ffi.c` only when the wrappers do
-not expose what you need.
+not expose what you need. For bytes-like inputs, `py.Bytes.fromObjectOwned` accepts
+bytes or buffer-capable objects, copying when needed to return owned bytes.

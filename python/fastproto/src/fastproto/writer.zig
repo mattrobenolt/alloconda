@@ -35,8 +35,8 @@ pub const Writer = struct {
     /// Write a raw varint. Useful when length is known upfront.
     pub fn writeVarint(self: *@This(), comptime T: type, value: T) !void {
         var buf: [max_varint_len]u8 = undefined;
-        const len = encodeVarint(T, value, &buf) catch unreachable;
-        try self.io.writeAll(buf[0..len]);
+        const data = encodeVarint(T, value, &buf) catch unreachable;
+        try self.io.writeAll(data);
     }
 
     /// Write a tag (field number + wire type).

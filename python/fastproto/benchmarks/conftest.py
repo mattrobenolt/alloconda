@@ -8,13 +8,13 @@ import pytest
 
 import fastproto._pure as pure
 
-accelerated: ModuleType | None
+native: ModuleType | None
 try:
-    import fastproto._accelerated as accelerated_mod
+    import fastproto._native as native_mod
 except ImportError:  # pragma: no cover - depends on native extension
-    accelerated = None
+    native = None
 else:
-    accelerated = accelerated_mod
+    native = native_mod
 
 
 @dataclass(frozen=True)
@@ -29,8 +29,8 @@ def _collect_backends() -> list[Backend]:
     if force_pure and force_pure not in {"0", "false", "False"}:
         return [Backend("pure", pure.Reader, pure.Writer)]
     backends = [Backend("pure", pure.Reader, pure.Writer)]
-    if accelerated is not None:
-        backends.append(Backend("native", accelerated.Reader, accelerated.Writer))
+    if native is not None:
+        backends.append(Backend("native", native.Reader, native.Writer))
     return backends
 
 

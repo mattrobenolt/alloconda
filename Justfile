@@ -43,7 +43,7 @@ lint-all:
     cd python/allotest && just lint
     cd python/zigzon && just lint
     cd python/wheeltest && just lint
-    cd python/fastproto && just fmt
+    cd python/fastproto && just lint
 
 fmt-all:
     just fmt

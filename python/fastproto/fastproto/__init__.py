@@ -46,7 +46,7 @@ if _force_pure and _force_pure not in {"0", "false", "False"}:
     __speedups__ = False
 else:
     try:
-        from fastproto._accelerated import Reader, Writer
+        from fastproto._native import Reader, Writer
 
         __speedups__ = True
     except ImportError:

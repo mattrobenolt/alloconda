@@ -15,6 +15,16 @@ pub const WireType = enum(u3) {
     len = 2, // string, bytes, embedded messages, packed repeated fields
     // 3 and 4 are deprecated (start/end group)
     fixed32 = 5, // fixed32, sfixed32, float
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const value = switch (self) {
+            .varint => "VARINT",
+            .fixed64 => "FIXED64",
+            .len => "LEN",
+            .fixed32 => "FIXED32",
+        };
+        try writer.writeAll(value);
+    }
 };
 
 /// Errors that can occur during protobuf operations.
@@ -62,7 +72,7 @@ pub inline fn writeInt(comptime T: type, buffer: *[@divExact(@typeInfo(T).int.bi
 
 /// Encode an integer as a varint into a buffer.
 /// Returns the number of bytes written.
-pub fn encodeVarint(comptime T: type, value: T, buf: []u8) !usize {
+pub fn encodeVarint(comptime T: type, value: T, buf: []u8) ![]const u8 {
     var v: Unsigned(T) = @bitCast(value);
 
     var i: usize = 0;
@@ -74,7 +84,7 @@ pub fn encodeVarint(comptime T: type, value: T, buf: []u8) !usize {
 
     if (i >= buf.len) return Error.BufferTooSmall;
     buf[i] = @truncate(v);
-    return i + 1;
+    return buf[0 .. i + 1];
 }
 
 test encodeVarint {
@@ -94,10 +104,10 @@ test encodeVarint {
         0xFFFFFFFFFFFFFFFF,
     }) |value| {
         var buf: [max_varint_len]u8 = undefined;
-        const len = try encodeVarint(u64, value, &buf);
-        const decoded, const bytes_read = try decodeVarint(u64, buf[0..len]);
+        const data = try encodeVarint(u64, value, &buf);
+        const decoded, const bytes_read = try decodeVarint(u64, data);
         try testing.expectEqual(value, decoded);
-        try testing.expectEqual(len, bytes_read);
+        try testing.expectEqual(data.len, bytes_read);
     }
 
     // Roundtrip i64
@@ -113,10 +123,10 @@ test encodeVarint {
         -0x8000000000000000,
     }) |value| {
         var buf: [max_varint_len]u8 = undefined;
-        const len = try encodeVarint(i64, value, &buf);
-        const decoded, const bytes_read = try decodeVarint(i64, buf[0..len]);
+        const data = try encodeVarint(i64, value, &buf);
+        const decoded, const bytes_read = try decodeVarint(i64, data);
         try testing.expectEqual(value, decoded);
-        try testing.expectEqual(len, bytes_read);
+        try testing.expectEqual(data.len, bytes_read);
     }
 }
 
@@ -294,12 +304,58 @@ pub const Scalar = enum {
         };
     }
 
-    /// Get the wire type for this scalar.
+    pub fn size(comptime self: Scalar) usize {
+        return @sizeOf(self.Type());
+    }
+
+    /// Get the WireType for this scalar.
     pub fn wireType(comptime self: Scalar) WireType {
         return switch (self) {
             .i32, .i64, .u32, .u64, .sint32, .sint64, .bool => .varint,
             .fixed64, .sfixed64, .double => .fixed64,
             .fixed32, .sfixed32, .float => .fixed32,
+        };
+    }
+
+    fn readType(comptime self: Scalar) type {
+        return switch (self.size()) {
+            1 => u8,
+            4 => u32,
+            8 => u64,
+            else => unreachable,
+        };
+    }
+
+    pub fn readInt(
+        comptime self: Scalar,
+        buffer: *const [@divExact(@typeInfo(self.readType()).int.bits, 8)]u8,
+    ) Type(self) {
+        const T = self.readType();
+        return @bitCast(std.mem.readInt(T, buffer, .little));
+    }
+
+    pub fn fromVarint(comptime self: Scalar, value: u64) Type(self) {
+        return switch (self) {
+            .i32 => @bitCast(@as(u32, @truncate(value))),
+            .i64 => @bitCast(value),
+            .u32 => @truncate(value),
+            .u64 => value,
+            .sint32 => zigzagDecode(u32, @truncate(value)),
+            .sint64 => zigzagDecode(u64, value),
+            .bool => value != 0,
+            else => @compileError("fromVarint expects a varint scalar"),
+        };
+    }
+
+    pub fn fromFixedBits(comptime self: Scalar, value: u64) Type(self) {
+        return switch (self) {
+            .fixed32 => @truncate(value),
+            .sfixed32 => @as(i32, @bitCast(@as(u32, @truncate(value)))),
+            .float => @as(f32, @bitCast(@as(u32, @truncate(value)))),
+            .fixed64 => value,
+            .sfixed64 => @as(i64, @bitCast(value)),
+            .double => @as(f64, @bitCast(value)),
+            else => @compileError("fromFixedBits expects a fixed scalar"),
         };
     }
 };
@@ -309,10 +365,4 @@ pub const Encoding = enum {
     varint,
     sint,
     fixed,
-
-    /// Get the Zig element type for this encoding and target type.
-    pub fn Type(comptime self: Encoding, comptime T: type) type {
-        _ = self;
-        return T;
-    }
 };

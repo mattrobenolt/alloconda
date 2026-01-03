@@ -268,6 +268,15 @@ pub const Bytes = struct {
         return .{ .obj = .borrowed(obj.ptr) };
     }
 
+    /// Ensure an owned bytes object, copying from a buffer-capable object if needed.
+    pub fn fromObjectOwned(obj: Object) PyError!Bytes {
+        if (obj.isBytes()) return .{ .obj = obj.incref() };
+
+        var buffer: Buffer = try .fromObject(obj);
+        defer buffer.release();
+        return .owned(try PyBytes.fromSlice(buffer.slice()));
+    }
+
     pub fn toPyObject(self: Bytes) PyError!*c.PyObject {
         return self.obj.toPyObject();
     }

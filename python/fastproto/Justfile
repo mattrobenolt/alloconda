@@ -4,10 +4,13 @@ default:
 fmt:
     ruff check --select I --fix
     ruff format
+    zig fmt .
 
 lint:
     ruff check
     ty check
+    zig fmt --check .
+    fd -e zig | zlint --stdin
 
 build:
     zig fetch --save ../../

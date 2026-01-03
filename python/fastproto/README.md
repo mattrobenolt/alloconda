@@ -307,14 +307,19 @@ assert decoded == ts
 
 ## Performance
 
-When the Zig extension is available, `fastproto` provides significant performance improvements over pure Python:
+When the Zig extension is available, `fastproto` provides significant performance improvements over pure Python.
+Example results (M1 MacBook Pro, mean time):
 
-| Operation | Pure Python | Zig | Speedup |
+| Benchmark | Pure Python | Zig | Speedup |
 |-----------|-------------|-----|---------|
-| Encode simple message | TBD | TBD | TBD |
-| Decode simple message | TBD | TBD | TBD |
-| Encode packed doubles | TBD | TBD | TBD |
-| Decode packed doubles | TBD | TBD | TBD |
+| Encode simple message | 2.048 us | 0.463 us | 4.4x |
+| Decode simple message | 4.065 us | 1.222 us | 3.3x |
+| Encode many fields | 50.355 us | 7.055 us | 7.1x |
+| Decode many fields | 85.426 us | 21.423 us | 4.0x |
+| Encode packed int64s | 182.933 us | 9.723 us | 18.8x |
+| Decode packed int64s | 233.994 us | 15.293 us | 15.3x |
+| Encode packed doubles | 72.345 us | 5.025 us | 14.4x |
+| Decode skip all | 7.914 us | 0.396 us | 20.0x |
 
 Run benchmarks yourself:
 
