@@ -39,6 +39,9 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .bytes_create = py.function(bytes_create, .{ .doc = "Create bytes from string" }),
     .buffer_len = py.function(buffer_len, .{ .doc = "Return length of buffer" }),
     .buffer_sum = py.function(buffer_sum, .{ .doc = "Return sum of buffer bytes" }),
+    .bytes_view_len = py.function(bytes_view_len, .{ .doc = "Return length of bytes-like view" }),
+    .bytes_view_sum = py.function(bytes_view_sum, .{ .doc = "Return sum of bytes-like view" }),
+    .bytes_view_is_buffer = py.function(bytes_view_is_buffer, .{ .doc = "Return true if view wraps a buffer" }),
 
     // List operations
     .list_len = py.function(list_len, .{ .doc = "Return length of list" }),
@@ -287,6 +290,27 @@ fn buffer_sum(data: py.Buffer) !u64 {
     var total: u64 = 0;
     for (slice) |byte| total += byte;
     return total;
+}
+
+fn bytes_view_len(data: py.BytesView) !usize {
+    var view = data;
+    defer view.deinit();
+    return view.len();
+}
+
+fn bytes_view_sum(data: py.BytesView) !u64 {
+    var view = data;
+    defer view.deinit();
+    const slice = try view.slice();
+    var total: u64 = 0;
+    for (slice) |byte| total += byte;
+    return total;
+}
+
+fn bytes_view_is_buffer(data: py.BytesView) bool {
+    var view = data;
+    defer view.deinit();
+    return view.isBuffer();
 }
 
 // ============================================================================

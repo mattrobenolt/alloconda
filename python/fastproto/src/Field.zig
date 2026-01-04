@@ -75,10 +75,10 @@ pub fn init(
     number: u32,
     wire_type: wire.WireType,
     value: u64,
-    data: ?py.Object,
-    data_start: usize,
-    data_len: usize,
+    view: ByteView,
 ) !py.Object {
+    var owned_view = view;
+    errdefer owned_view.deinit();
     var field = try Field.new();
     errdefer field.deinit();
     const state = try Field.payloadFrom(field);
@@ -86,7 +86,7 @@ pub fn init(
         .number = number,
         .wire_type = wire_type,
         .value = value,
-        .view = .init(data, data_start, data_len),
+        .view = owned_view,
     };
     try field.setAttr("number", u32, number);
     try field.setAttr("wire_type", u8, @intFromEnum(wire_type));
@@ -106,8 +106,8 @@ fn fieldBytes(self: py.Object) !py.Bytes {
 fn fieldMessage(self: py.Object) !py.Object {
     const state = try Field.payloadFrom(self);
     try state.require(.len);
-    const data_obj = state.view.data orelse @panic("field data missing");
-    return Reader.new(data_obj, state.view.start, state.view.len);
+    const view = try state.view.clone();
+    return Reader.newFromView(view);
 }
 
 fn deinit(self: py.Object) void {

@@ -116,6 +116,7 @@ state.value = 42;
 ## Wrapper types
 
 Prefer the alloconda wrapper types (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`,
-`py.Bytes`) instead of raw CPython calls. Use `py.ffi.c` only when the wrappers do
-not expose what you need. For bytes-like inputs, `py.Bytes.fromObjectOwned` accepts
-bytes or buffer-capable objects, copying when needed to return owned bytes.
+`py.Bytes`, `py.BytesView`) instead of raw CPython calls. Use `py.ffi.c` only when
+the wrappers do not expose what you need. For bytes-like inputs, `py.Bytes.fromObjectOwned`
+accepts bytes or buffer-capable objects, copying when needed to return owned bytes.
+Use `py.BytesView` for zero-copy access to bytes or buffer-backed inputs.

@@ -32,6 +32,7 @@ pub const module = module_mod.module;
 const types = @import("types.zig");
 pub const Object = types.Object;
 pub const Bytes = types.Bytes;
+pub const BytesView = types.BytesView;
 pub const Buffer = types.Buffer;
 pub const BigInt = types.BigInt;
 pub const Int = types.Int;

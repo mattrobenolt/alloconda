@@ -57,6 +57,30 @@ class TestBuffer:
             allotest.buffer_len("not-bytes")  # type: ignore[arg-type]
 
 
+class TestBytesView:
+    """Test bytes view operations."""
+
+    def test_bytes_view_len(self) -> None:
+        assert allotest.bytes_view_len(b"hello") == 5
+        assert allotest.bytes_view_len(bytearray(b"hello")) == 5
+        assert allotest.bytes_view_len(memoryview(b"hello")) == 5
+        assert allotest.bytes_view_len(memoryview(b"hello")[1:4]) == 3
+
+    def test_bytes_view_sum(self) -> None:
+        assert allotest.bytes_view_sum(b"\x01\x02\x03") == 6
+        assert allotest.bytes_view_sum(bytearray(b"\x01\x02\x03")) == 6
+        assert allotest.bytes_view_sum(memoryview(b"\x01\x02\x03")) == 6
+
+    def test_bytes_view_is_buffer(self) -> None:
+        assert allotest.bytes_view_is_buffer(b"hello") is False
+        assert allotest.bytes_view_is_buffer(bytearray(b"hello")) is True
+        assert allotest.bytes_view_is_buffer(memoryview(b"hello")) is True
+
+    def test_bytes_view_type_error(self) -> None:
+        with pytest.raises(TypeError):
+            allotest.bytes_view_len("not-bytes")  # type: ignore[arg-type]
+
+
 class TestIntConversion:
     """Test integer conversion helpers."""
 

@@ -31,22 +31,24 @@ const State = struct {
 };
 
 pub fn new(data: py.Object, start: usize, len: usize) !py.Object {
+    const view: ByteView = try .fromObjectSlice(data, start, len);
+    return newFromView(view);
+}
+
+pub fn newFromView(view: ByteView) !py.Object {
+    var owned_view = view;
+    errdefer owned_view.deinit();
     var reader = try Reader.new();
     errdefer reader.deinit();
     const state = try Reader.payloadFrom(reader);
-    state.* = .{
-        .view = .init(data, start, len),
-        .pos = 0,
-    };
+    state.* = .{ .view = owned_view };
     return reader;
 }
 
 fn readerInit(self: py.Object, data: py.Object) !void {
     const state = try Reader.payloadFrom(self);
-    state.* = .empty;
-    const bytes: py.Bytes = try .fromObjectOwned(data);
-    state.view.data = bytes.obj;
-    state.view.len = try bytes.len();
+    state.deinit();
+    state.* = .{ .view = try .fromObject(data) };
 }
 
 fn readerIter(self: py.Object) !py.Object {
@@ -84,7 +86,7 @@ fn readerNextField(self: py.Object) !?py.Object {
             const raw_ptr: *const [size]u8 = @ptrCast(raw.ptr);
             const value = wire.readInt(u32, raw_ptr);
             pos += size;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, null, 0, 0);
+            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
         },
         .fixed64 => blk: {
             const size = 8;
@@ -93,12 +95,12 @@ fn readerNextField(self: py.Object) !?py.Object {
             const raw_ptr: *const [size]u8 = @ptrCast(raw.ptr);
             const value = wire.readInt(u64, raw_ptr);
             pos += size;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, null, 0, 0);
+            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
         },
         .varint => blk: {
             const value, const next = try decodeVarintAt(slice, pos);
             pos = next;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, null, 0, 0);
+            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
         },
         .len => blk: {
             const length_value, const next = try decodeVarintAt(slice, pos);
@@ -108,13 +110,12 @@ fn readerNextField(self: py.Object) !?py.Object {
             const length: usize = @intCast(length_value);
             const data_start = state.view.start + pos;
             pos += length;
+            const field_view = try state.view.cloneSlice(data_start, length);
             break :blk Field.init(
                 parsed.field_number,
                 parsed.wire_type,
                 0,
-                state.view.data,
-                data_start,
-                length,
+                field_view,
             );
         },
     };

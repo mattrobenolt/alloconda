@@ -313,6 +313,79 @@ pub const Bytes = struct {
     }
 };
 
+/// Wrapper for bytes-like objects (bytes or buffer) without copying.
+pub const BytesView = struct {
+    len_value: usize,
+    storage: Storage,
+
+    const Storage = union(enum) {
+        bytes: Object,
+        buffer: Buffer,
+    };
+
+    /// Create a bytes view from bytes or a buffer-capable object.
+    pub fn fromObject(obj: Object) PyError!BytesView {
+        if (obj.isBytes()) {
+            const owned = obj.incref();
+            const len_value = try PyBytes.size(owned.ptr);
+            return .{ .len_value = len_value, .storage = .{ .bytes = owned } };
+        }
+
+        var buffer = try Buffer.fromObject(obj);
+        const len_value = buffer.len();
+        return .{ .len_value = len_value, .storage = .{ .buffer = buffer } };
+    }
+
+    /// Return true if this view wraps a bytes object.
+    pub fn isBytes(self: *const BytesView) bool {
+        return self.storage == .bytes;
+    }
+
+    /// Return true if this view wraps a buffer.
+    pub fn isBuffer(self: *const BytesView) bool {
+        return self.storage == .buffer;
+    }
+
+    /// Return the byte length.
+    pub fn len(self: *const BytesView) usize {
+        return self.len_value;
+    }
+
+    /// Borrow the underlying bytes as a slice (valid while the view lives).
+    pub fn slice(self: *const BytesView) PyError![]const u8 {
+        switch (self.storage) {
+            .bytes => |obj| return PyBytes.slice(obj.ptr),
+            .buffer => |buf| return buf.slice(),
+        }
+    }
+
+    /// Clone this view, retaining ownership of the underlying storage.
+    pub fn clone(self: *const BytesView) PyError!BytesView {
+        switch (self.storage) {
+            .bytes => |obj| return .{
+                .len_value = self.len_value,
+                .storage = .{ .bytes = obj.incref() },
+            },
+            .buffer => |buf| {
+                var cloned = try buf.clone();
+                return .{
+                    .len_value = cloned.len(),
+                    .storage = .{ .buffer = cloned },
+                };
+            },
+        }
+    }
+
+    /// Release owned references.
+    pub fn deinit(self: *BytesView) void {
+        switch (self.storage) {
+            .bytes => |obj| obj.deinit(),
+            .buffer => |*buf| buf.release(),
+        }
+        self.* = undefined;
+    }
+};
+
 /// Wrapper for Python buffer protocol.
 pub const Buffer = struct {
     view: c.Py_buffer,
@@ -332,6 +405,12 @@ pub const Buffer = struct {
     /// Release the buffer view.
     pub fn release(self: *Buffer) void {
         PyBuffer.release(&self.view);
+    }
+
+    /// Clone this buffer view by requesting a new view from the exporter.
+    pub fn clone(self: *const Buffer) PyError!Buffer {
+        const obj = self.view.obj orelse return raise(.RuntimeError, "buffer missing owner");
+        return init(.borrowed(obj));
     }
 
     /// Return the byte length.
@@ -893,6 +972,7 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) PyError!T {
         // Wrapper types
         Object => Object.borrowed(ptr),
         Bytes => try Bytes.fromObject(.borrowed(ptr)),
+        BytesView => try BytesView.fromObject(.borrowed(ptr)),
         BigInt => try BigInt.fromObject(.borrowed(ptr)),
         Long => try Long.fromObject(.borrowed(ptr)),
         Int => try Int.fromObject(.borrowed(ptr)),

@@ -31,12 +31,13 @@ across Python versions and platforms.
 ### Type Conversions
 - `i64`, `f64`, `bool`
 - `[]const u8` (strings)
-- `py.Bytes`, `py.List`, `py.Dict`, `py.Tuple`
+- `py.Bytes`, `py.BytesView`, `py.Buffer`, `py.List`, `py.Dict`, `py.Tuple`
 - `py.Object` (any Python object)
 - Optional types (`?T`)
 
 ### Collection Operations
 - **Bytes**: `len`, `slice`, `fromSlice`
+- **BytesView**: `len`, `slice`, `isBuffer`
 - **List**: `init`, `len`, `get`, `set`, `append`
 - **Dict**: `init`, `len`, `getItem`, `setItem`, `iter`
 - **Tuple**: `len`, `get`, `toTuple`
