@@ -3,6 +3,7 @@ const fmt = std.fmt;
 const math = std.math;
 const mem = std.mem;
 const Allocator = mem.Allocator;
+const Io = std.Io;
 const big_int = math.big.int;
 
 const errors = @import("errors.zig");
@@ -10,7 +11,6 @@ const raise = errors.raise;
 const PyError = errors.PyError;
 const ffi = @import("ffi.zig");
 const c = ffi.c;
-const allocator = ffi.allocator;
 const PyErr = ffi.PyErr;
 const PyObject = ffi.PyObject;
 const PyImport = ffi.PyImport;
@@ -21,6 +21,7 @@ const PyType = ffi.PyType;
 const PyBytes = ffi.PyBytes;
 const PyUnicode = ffi.PyUnicode;
 const PyBuffer = ffi.PyBuffer;
+const PyMemoryView = ffi.PyMemoryView;
 const PyLong = ffi.PyLong;
 const PyFloat = ffi.PyFloat;
 const PyBool = ffi.PyBool;
@@ -386,6 +387,210 @@ pub const BytesView = struct {
     }
 };
 
+/// Wrapper for Python binary reader objects via std.Io.Reader.
+pub const IoReader = struct {
+    obj: Object,
+    interface: Io.Reader,
+
+    /// Owned buffer with the number of bytes read.
+    pub const Slice = struct {
+        buf: []u8,
+        len: usize,
+
+        /// Free the owned buffer.
+        pub fn deinit(self: *@This(), allocator: Allocator) void {
+            allocator.free(self.buf);
+            self.* = undefined;
+        }
+
+        /// Return the valid data slice.
+        pub fn slice(self: *const @This()) []const u8 {
+            return self.buf[0..self.len];
+        }
+    };
+
+    /// Create a new IO reader from a Python object with readinto().
+    pub fn init(obj: Object, buffer: []u8) PyError!IoReader {
+        return .{
+            .obj = obj.incref(),
+            .interface = initInterface(buffer),
+        };
+    }
+
+    /// Create an unbuffered IO reader (no internal buffer).
+    pub fn initUnbuffered(obj: Object) PyError!IoReader {
+        return init(obj, &.{});
+    }
+
+    pub fn initInterface(buffer: []u8) Io.Reader {
+        return .{
+            .vtable = &.{ .stream = IoReader.stream },
+            .buffer = buffer,
+            .seek = 0,
+            .end = 0,
+        };
+    }
+
+    /// Release the held reference.
+    pub fn deinit(self: *IoReader) void {
+        self.obj.deinit();
+        self.* = undefined;
+    }
+
+    /// Read up to buffer.len bytes into buffer.
+    pub fn readAll(self: *IoReader, buffer: []u8) PyError![]const u8 {
+        const n = self.interface.readSliceShort(buffer) catch |err| switch (err) {
+            error.ReadFailed => {
+                try errors.reraise();
+                return raise(.RuntimeError, "read failed");
+            },
+        };
+        return buffer[0..n];
+    }
+
+    /// Allocate a buffer of len and read up to len bytes into it.
+    /// Caller owns the returned buffer and must free it with allocator.free.
+    pub fn readAllAlloc(self: *IoReader, allocator: Allocator, len: usize) PyError!Slice {
+        const buf = try allocator.alloc(u8, len);
+        errdefer allocator.free(buf);
+        const data = try self.readAll(buf);
+        return .{ .buf = buf, .len = data.len };
+    }
+
+    /// Append all remaining bytes into list until EOF.
+    pub fn appendRemainingUnlimited(
+        self: *IoReader,
+        allocator: Allocator,
+        list: *std.ArrayList(u8),
+    ) PyError!void {
+        self.interface.appendRemainingUnlimited(allocator, list) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ReadFailed => {
+                try errors.reraise();
+                return raise(.RuntimeError, "read failed");
+            },
+        };
+    }
+
+    fn stream(r: *Io.Reader, w: *Io.Writer, limit: Io.Limit) Io.Reader.StreamError!usize {
+        const self: *IoReader = @alignCast(@fieldParentPtr("interface", r));
+        const dest = limit.slice(try w.writableSliceGreedy(1));
+        if (dest.len == 0) return 0;
+
+        const memview = PyMemoryView.fromMemory(dest.ptr, dest.len, c.PyBUF_WRITE) catch return error.ReadFailed;
+
+        const result = self.obj.callMethod1("readinto", *c.PyObject, memview) catch return error.ReadFailed;
+        defer result.deinit();
+
+        const n_signed = result.as(i64) catch return error.ReadFailed;
+        if (n_signed < 0) return error.ReadFailed;
+        const n: usize = @intCast(n_signed);
+        if (n == 0) return error.EndOfStream;
+        if (n > dest.len) return error.ReadFailed;
+        w.advance(n);
+        return n;
+    }
+};
+
+/// Wrapper for Python binary writer objects via std.Io.Writer.
+pub const IoWriter = struct {
+    obj: Object,
+    interface: Io.Writer,
+
+    /// Create a new IO writer from a Python object with write().
+    pub fn init(obj: Object, buffer: []u8) PyError!IoWriter {
+        return .{
+            .obj = obj.incref(),
+            .interface = initInterface(buffer),
+        };
+    }
+
+    /// Create an unbuffered IO writer (no internal buffer).
+    pub fn initUnbuffered(obj: Object) PyError!IoWriter {
+        return init(obj, &.{});
+    }
+
+    pub fn initInterface(buffer: []u8) Io.Writer {
+        return .{
+            .vtable = &.{ .drain = IoWriter.drain },
+            .buffer = buffer,
+            .end = 0,
+        };
+    }
+
+    /// Write all bytes to the underlying stream.
+    pub fn writeAll(self: *@This(), bytes: []const u8) PyError!void {
+        const writer = &self.interface;
+        writer.writeAll(bytes) catch |err| switch (err) {
+            error.WriteFailed => {
+                try errors.reraise();
+                return raise(.RuntimeError, "write failed");
+            },
+        };
+    }
+
+    /// Flush buffered data to the underlying stream.
+    pub fn flush(self: *@This()) PyError!void {
+        const writer = &self.interface;
+        writer.flush() catch |err| switch (err) {
+            error.WriteFailed => {
+                try errors.reraise();
+                return raise(.RuntimeError, "flush failed");
+            },
+        };
+    }
+
+    /// Release the held reference.
+    pub fn deinit(self: *IoWriter) void {
+        self.obj.deinit();
+        self.* = undefined;
+    }
+
+    fn drain(w: *Io.Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
+        const self: *IoWriter = @alignCast(@fieldParentPtr("interface", w));
+        if (w.end != 0) {
+            const buffered = w.buffered();
+            const n = try self.writeSlice(buffered);
+            _ = w.consume(n);
+            if (n < buffered.len) return 0;
+        }
+
+        if (data.len == 0) return 0;
+        var written: usize = 0;
+        for (data[0 .. data.len - 1]) |slice| {
+            if (slice.len == 0) continue;
+            const n = try self.writeSlice(slice);
+            written += n;
+            if (n < slice.len) return written;
+        }
+
+        const pattern = data[data.len - 1];
+        if (pattern.len == 0 or splat == 0) return written;
+        var i: usize = 0;
+        while (i < splat) : (i += 1) {
+            const n = try self.writeSlice(pattern);
+            written += n;
+            if (n < pattern.len) return written;
+        }
+        return written;
+    }
+
+    fn writeSlice(self: *IoWriter, bytes: []const u8) Io.Writer.Error!usize {
+        if (bytes.len == 0) return 0;
+        const ptr: [*]u8 = @ptrCast(@constCast(bytes.ptr));
+        const memview = PyMemoryView.fromMemory(ptr, bytes.len, c.PyBUF_READ) catch return error.WriteFailed;
+
+        const result = self.obj.callMethod1("write", *c.PyObject, memview) catch return error.WriteFailed;
+        defer result.deinit();
+
+        const n_signed = result.as(i64) catch return error.WriteFailed;
+        if (n_signed < 0) return error.WriteFailed;
+        const n: usize = @intCast(n_signed);
+        if (n > bytes.len) return error.WriteFailed;
+        return n;
+    }
+};
+
 /// Wrapper for Python buffer protocol.
 pub const Buffer = struct {
     view: c.Py_buffer,
@@ -434,17 +639,18 @@ pub const BigInt = struct {
     }
 
     pub fn fromObject(obj: Object) PyError!BigInt {
+        const gpa = ffi.allocator;
         if (!obj.isLong()) return raise(.TypeError, "expected int");
 
         const text_obj = try PyObject.str(obj.ptr);
         defer PyObject.decRef(text_obj);
         const text = try PyUnicode.slice(text_obj);
-        var managed = big_int.Managed.init(allocator) catch return raise(.MemoryError, "out of memory");
+        var managed: big_int.Managed = try .init(gpa);
 
         errdefer managed.deinit();
         managed.setString(10, text) catch |err| {
             return switch (err) {
-                error.OutOfMemory => raise(.MemoryError, "out of memory"),
+                error.OutOfMemory => error.OutOfMemory,
                 error.InvalidCharacter, error.InvalidBase => raise(.ValueError, "invalid integer string"),
             };
         };
@@ -452,14 +658,11 @@ pub const BigInt = struct {
     }
 
     pub fn toPyObject(self: BigInt) PyError!*c.PyObject {
-        const text = self.value.toConst().toStringAlloc(allocator, 10, .lower) catch {
-            return raise(.MemoryError, "out of memory");
-        };
-        defer allocator.free(text);
-        const buf = allocator.alloc(u8, text.len + 1) catch {
-            return raise(.MemoryError, "out of memory");
-        };
-        defer allocator.free(buf);
+        const gpa = ffi.allocator;
+        const text = try self.value.toConst().toStringAlloc(gpa, 10, .lower);
+        defer gpa.free(text);
+        const buf = try gpa.alloc(u8, text.len + 1);
+        defer gpa.free(buf);
         @memcpy(buf[0..text.len], text);
         buf[text.len] = 0;
         const text_z: [:0]const u8 = buf[0..text.len :0];
@@ -631,12 +834,10 @@ pub const List = struct {
     }
 
     /// Convert this list into an owned Zig slice; caller must free the buffer.
-    pub fn toSlice(self: List, comptime T: type, gpa: Allocator) PyError![]T {
+    pub fn toSlice(self: List, comptime T: type, allocator: Allocator) PyError![]T {
         const size = try self.len();
-        const buffer = gpa.alloc(T, size) catch {
-            return raise(.MemoryError, "out of memory");
-        };
-        errdefer gpa.free(buffer);
+        const buffer = try allocator.alloc(T, size);
+        errdefer allocator.free(buffer);
         for (0..size) |i| {
             const item = try self.get(i);
             const value = try fromPy(T, item.ptr);

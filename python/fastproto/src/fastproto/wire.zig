@@ -16,7 +16,7 @@ pub const WireType = enum(u3) {
     // 3 and 4 are deprecated (start/end group)
     fixed32 = 5, // fixed32, sfixed32, float
 
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn format(self: @This(), writer: *Io.Writer) Io.Writer.Error!void {
         const value = switch (self) {
             .varint => "VARINT",
             .fixed64 => "FIXED64",

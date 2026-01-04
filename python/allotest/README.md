@@ -19,6 +19,7 @@ across Python versions and platforms.
 | `test_classes.py` | Class definitions, self parameter, multiple classes |
 | `test_interop.py` | Python module imports and method calls |
 | `test_gc.py` | Garbage collection edge cases and stress tests |
+| `test_io.py` | IO adapter wrappers |
 
 ## API Coverage
 
@@ -41,6 +42,9 @@ across Python versions and platforms.
 - **List**: `init`, `len`, `get`, `set`, `append`
 - **Dict**: `init`, `len`, `getItem`, `setItem`, `iter`
 - **Tuple**: `len`, `get`, `toTuple`
+
+### IO Operations
+- `IoReader`/`IoWriter` adapters via `readinto`/`write`
 
 ### Object Operations
 - `call0`, `call1`, `call2`

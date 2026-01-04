@@ -138,7 +138,7 @@ pub const PyMem = struct {
     pub inline fn alloc(size: usize) !*anyopaque {
         return c.PyMem_Malloc(size) orelse {
             _ = c.PyErr_NoMemory();
-            return error.PythonError;
+            return error.OutOfMemory;
         };
     }
 
@@ -407,6 +407,21 @@ pub const PyBuffer = struct {
     /// Release a view returned by PyBuffer.get.
     pub inline fn release(view: *c.Py_buffer) void {
         c.PyBuffer_Release(view);
+    }
+};
+
+/// C API analog: PyMemoryView_* helpers.
+pub const PyMemoryView = struct {
+    pub inline fn fromMemory(ptr: [*]u8, len: usize, flags: c_int) !*c.PyObject {
+        return objectOrError(c.PyMemoryView_FromMemory(@ptrCast(ptr), @intCast(len), flags));
+    }
+
+    pub inline fn fromBuffer(view: *c.Py_buffer) !*c.PyObject {
+        return objectOrError(c.PyMemoryView_FromBuffer(view));
+    }
+
+    pub inline fn fromObject(obj: *c.PyObject) !*c.PyObject {
+        return objectOrError(c.PyMemoryView_FromObject(obj));
     }
 };
 

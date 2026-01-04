@@ -42,6 +42,8 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .bytes_view_len = py.function(bytes_view_len, .{ .doc = "Return length of bytes-like view" }),
     .bytes_view_sum = py.function(bytes_view_sum, .{ .doc = "Return sum of bytes-like view" }),
     .bytes_view_is_buffer = py.function(bytes_view_is_buffer, .{ .doc = "Return true if view wraps a buffer" }),
+    .io_read = py.function(io_read, .{ .doc = "Read from a binary IO object" }),
+    .write_all = py.function(write_all, .{ .doc = "Write all bytes to a binary IO object" }),
 
     // List operations
     .list_len = py.function(list_len, .{ .doc = "Return length of list" }),
@@ -311,6 +313,44 @@ fn bytes_view_is_buffer(data: py.BytesView) bool {
     var view = data;
     defer view.deinit();
     return view.isBuffer();
+}
+
+fn io_read(stream: py.Object, max_len: i64) !py.Bytes {
+    const gpa = py.allocator;
+    var reader: py.IoReader = try .initUnbuffered(stream);
+    defer reader.deinit();
+
+    if (max_len == 0) return .fromSlice(&.{});
+
+    if (max_len < 0) {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(gpa);
+
+        try reader.appendRemainingUnlimited(gpa, &buf);
+        return .fromSlice(buf.items);
+    }
+
+    const want: usize = @intCast(max_len);
+    var buf: [1024]u8 = undefined;
+    if (want <= buf.len) {
+        const data = try reader.readAll(buf[0..want]);
+        return .fromSlice(data);
+    }
+
+    var result = try reader.readAllAlloc(gpa, want);
+    defer result.deinit(gpa);
+    return .fromSlice(result.slice());
+}
+
+fn write_all(stream: py.Object, data: py.BytesView) !usize {
+    var view = data;
+    defer view.deinit();
+    const slice = try view.slice();
+
+    var writer: py.IoWriter = try .initUnbuffered(stream);
+    defer writer.deinit();
+    try writer.writeAll(slice);
+    return slice.len;
 }
 
 // ============================================================================

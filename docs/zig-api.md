@@ -120,3 +120,45 @@ Prefer the alloconda wrapper types (`py.Object`, `py.List`, `py.Dict`, `py.Tuple
 the wrappers do not expose what you need. For bytes-like inputs, `py.Bytes.fromObjectOwned`
 accepts bytes or buffer-capable objects, copying when needed to return owned bytes.
 Use `py.BytesView` for zero-copy access to bytes or buffer-backed inputs.
+
+## IO Adapters
+
+Use `py.IoReader` and `py.IoWriter` to wrap Python binary streams (`readinto`/`write`)
+with the Zig 0.15 `std.Io.Reader`/`std.Io.Writer` interfaces. For direct reads into
+your buffers, initialize with an empty internal buffer (`&.{}`):
+
+```zig
+var reader: py.IoReader = try .initUnbufffered(stream);
+defer reader.deinit();
+
+var buf: [1024]u8 = undefined;
+const data = try reader.readAll(&buf);
+const bytes: py.Bytes = try .fromSlice(data);
+```
+
+For larger reads, allocate and free through the helper:
+
+```zig
+const result = try reader.readAllAlloc(py.allocator, size);
+defer result.deinit(py.allocator);
+const bytes: py.Bytes = try .fromSlice(result.slice());
+```
+
+To read until EOF:
+
+```zig
+var list: std.ArrayList(u8) = .empty;
+defer list.deinit(py.allocator);
+try reader.appendRemainingUnlimited(py.allocator, &list);
+const bytes: py.Bytes = try .fromSlice(list.items);
+```
+
+For writing, call `writeAll` and flush:
+
+```zig
+var out_buf: [1024]u8 = undefined;
+var writer: py.IoWriter = try .init(stream, &out_buf);
+defer writer.deinit();
+try writer.writeAll(payload);
+try writer.flush();
+```

@@ -17,7 +17,7 @@ pub const Exception = enum {
     StopIteration,
 };
 
-pub const PyError = error{PythonError};
+pub const PyError = error{ PythonError, OutOfMemory };
 
 /// Raise a Python exception of a given kind.
 pub inline fn raise(comptime kind: Exception, msg: [:0]const u8) PyError {
@@ -65,7 +65,10 @@ pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) PyError {
 /// Set a Python RuntimeError from a Zig error if no exception is pending.
 pub fn setPythonError(err: anyerror) void {
     if (errorOccurred()) return;
-    setPythonErrorKind(.RuntimeError, err);
+    switch (err) {
+        error.OutOfMemory => setError(.MemoryError, "out of memory"),
+        else => setPythonErrorKind(.RuntimeError, err),
+    }
 }
 
 /// Set a Python exception of a specific kind from a Zig error.
