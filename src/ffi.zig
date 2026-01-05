@@ -4,7 +4,7 @@ const mem = std.mem;
 const heap = std.heap;
 const fmt = std.fmt;
 const ArenaAllocator = heap.ArenaAllocator;
-/// Default allocator backed by CPython's memory allocator.
+/// Default allocator backed by libc malloc/free.
 pub const allocator = heap.c_allocator;
 
 const errors = @import("errors.zig");

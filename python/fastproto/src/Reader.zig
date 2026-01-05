@@ -1,54 +1,50 @@
+const fastproto = @import("fastproto");
+const wire = fastproto.wire;
 const py = @import("alloconda");
-const wire = @import("fastproto").wire;
 
-const ByteView = @import("ByteView.zig");
 const Field = @import("Field.zig");
 
+const default_buffer_size = 8192;
+
 pub const Reader = py.class("Reader", "Reads fields from a protobuf-encoded message.", .{
-    .__init__ = py.method(readerInit, .{ .doc = "Initialize reader from bytes-like data.", .args = &.{"data"} }),
+    .__init__ = py.method(
+        readerInit,
+        .{ .doc = "Initialize reader from a binary IO stream.", .args = &.{"stream"} },
+    ),
     .__iter__ = py.method(readerIter, .{ .doc = "Return iterator." }),
     .__next__ = py.method(readerNext, .{ .doc = "Return next field." }),
-    .next_field = py.method(readerNextField, .{ .doc = "Read the next field, or None if at end." }),
-    .skip = py.method(readerSkip, .{ .doc = "Skip the next field, returns True if skipped." }),
-    .remaining = py.method(readerRemaining, .{ .doc = "Return the number of bytes remaining." }),
-    .__del__ = py.method(deinit, .{ .doc = "Release held buffer." }),
+    .next = py.method(readerNextField, .{ .doc = "Read the next field, or None if at end." }),
+    .remaining = py.method(readerRemaining, .{ .doc = "Return remaining bytes for bounded readers." }),
+    .__del__ = py.method(deinit, .{ .doc = "Release held stream resources." }),
 }).withPayload(State);
 
 const State = struct {
-    view: ByteView = .empty,
-    pos: usize = 0,
-
-    const empty: @This() = .{};
-
-    fn slice(self: *const @This()) ![]const u8 {
-        return self.view.slice();
-    }
+    io: ?py.IoReader = null,
+    reader: fastproto.Reader = undefined,
+    owner: ?py.Object = null,
+    buffer: [default_buffer_size]u8 = undefined,
 
     fn deinit(self: *@This()) void {
-        self.view.deinit();
+        if (self.io) |*io| io.deinit();
+        if (self.owner) |obj| obj.deinit();
         self.* = undefined;
     }
 };
 
-pub fn new(data: py.Object, start: usize, len: usize) !py.Object {
-    const view: ByteView = try .fromObjectSlice(data, start, len);
-    return newFromView(view);
+pub fn newFromReader(reader: fastproto.Reader, owner: py.Object) !py.Object {
+    return Reader.newWithPayload(.{
+        .reader = reader,
+        .owner = owner.incref(),
+    });
 }
 
-pub fn newFromView(view: ByteView) !py.Object {
-    var owned_view = view;
-    errdefer owned_view.deinit();
-    var reader = try Reader.new();
-    errdefer reader.deinit();
-    const state = try Reader.payloadFrom(reader);
-    state.* = .{ .view = owned_view };
-    return reader;
-}
-
-fn readerInit(self: py.Object, data: py.Object) !void {
+fn readerInit(self: py.Object, stream: py.Object) !void {
     const state = try Reader.payloadFrom(self);
     state.deinit();
-    state.* = .{ .view = try .fromObject(data) };
+
+    state.io = try .init(stream, &state.buffer);
+    state.reader = .init(&state.io.?.interface);
+    state.owner = null;
 }
 
 fn readerIter(self: py.Object) !py.Object {
@@ -62,129 +58,33 @@ fn readerNext(self: py.Object) !py.Object {
 
 fn readerNextField(self: py.Object) !?py.Object {
     const state = try Reader.payloadFrom(self);
-    if (state.pos >= state.view.len) return null;
-
-    const slice = try state.slice();
-    var pos = state.pos;
-
-    const tag_value, const tag_next = try decodeVarintAt(slice, pos);
-    pos = tag_next;
-
-    const parsed = wire.Tag.parse(tag_value) catch |err| {
-        return py.raise(.ValueError, switch (err) {
-            wire.Error.InvalidWireType => "invalid wire type",
-            wire.Error.InvalidFieldNumber => "invalid field number",
-            else => "invalid tag",
-        });
+    const field = state.reader.next() catch |err| {
+        return raiseWireError(err);
     };
-
-    const field: py.Object = try switch (parsed.wire_type) {
-        .fixed32 => blk: {
-            const size = 4;
-            if (slice.len - pos < size) return py.raise(.ValueError, "truncated fixed32");
-            const raw = slice[pos .. pos + size];
-            const raw_ptr: *const [size]u8 = @ptrCast(raw.ptr);
-            const value = wire.readInt(u32, raw_ptr);
-            pos += size;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
-        },
-        .fixed64 => blk: {
-            const size = 8;
-            if (slice.len - pos < size) return py.raise(.ValueError, "truncated fixed64");
-            const raw = slice[pos .. pos + size];
-            const raw_ptr: *const [size]u8 = @ptrCast(raw.ptr);
-            const value = wire.readInt(u64, raw_ptr);
-            pos += size;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
-        },
-        .varint => blk: {
-            const value, const next = try decodeVarintAt(slice, pos);
-            pos = next;
-            break :blk Field.init(parsed.field_number, parsed.wire_type, value, .empty);
-        },
-        .len => blk: {
-            const length_value, const next = try decodeVarintAt(slice, pos);
-            pos = next;
-            const remaining = slice.len - pos;
-            if (length_value > remaining) return py.raise(.ValueError, "truncated length-delimited field");
-            const length: usize = @intCast(length_value);
-            const data_start = state.view.start + pos;
-            pos += length;
-            const field_view = try state.view.cloneSlice(data_start, length);
-            break :blk Field.init(
-                parsed.field_number,
-                parsed.wire_type,
-                0,
-                field_view,
-            );
-        },
-    };
-
-    state.pos = pos;
-    return field;
-}
-
-fn readerSkip(self: py.Object) !bool {
-    const state = try Reader.payloadFrom(self);
-    if (state.pos >= state.view.len) return false;
-    const slice = try state.slice();
-    var pos = state.pos;
-
-    const tag_value, const tag_next = try decodeVarintAt(slice, pos);
-    pos = tag_next;
-
-    const parsed = wire.Tag.parse(tag_value) catch |err| {
-        return py.raise(.ValueError, switch (err) {
-            wire.Error.InvalidWireType => "invalid wire type",
-            wire.Error.InvalidFieldNumber => "invalid field number",
-            else => "invalid tag",
-        });
-    };
-
-    switch (parsed.wire_type) {
-        .varint => {
-            _, const next = try decodeVarintAt(slice, pos);
-            pos = next;
-        },
-        .len => {
-            const value, const next = try decodeVarintAt(slice, pos);
-            const remaining = slice.len - pos;
-            if (value > remaining) return py.raise(.ValueError, "truncated length-delimited field");
-            pos = next + value;
-        },
-        .fixed32 => {
-            const size = 4;
-            if (slice.len - pos < size) return py.raise(.ValueError, "truncated fixed32");
-            pos += size;
-        },
-        .fixed64 => {
-            const size = 8;
-            if (slice.len - pos < size) return py.raise(.ValueError, "truncated fixed64");
-            pos += size;
-        },
+    if (field) |value| {
+        const obj = try Field.init(value, self);
+        return obj;
     }
-
-    state.pos = pos;
-    return true;
+    return null;
 }
 
-fn readerRemaining(self: py.Object) !usize {
+fn readerRemaining(self: py.Object) !?usize {
     const state = try Reader.payloadFrom(self);
-    return state.view.len - state.pos;
+    return state.reader.remaining;
+}
+
+fn raiseWireError(err: anyerror) py.PyError {
+    return py.raiseError(err, &.{
+        .{ .err = wire.Error.Truncated, .kind = .ValueError, .msg = "truncated field" },
+        .{ .err = wire.Error.VarintTooLong, .kind = .ValueError, .msg = "varint too long" },
+        .{ .err = wire.Error.InvalidWireType, .kind = .ValueError, .msg = "invalid wire type" },
+        .{ .err = wire.Error.InvalidFieldNumber, .kind = .ValueError, .msg = "invalid field number" },
+        .{ .err = wire.Error.FieldNumberTooLarge, .kind = .ValueError, .msg = "field number too large" },
+        .{ .err = wire.Error.ReadFailed, .kind = .RuntimeError, .msg = "read failed" },
+    });
 }
 
 fn deinit(self: py.Object) void {
     const state = Reader.payloadFrom(self) catch return;
     state.deinit();
-}
-
-fn decodeVarintAt(slice: []const u8, pos: usize) !struct { u64, usize } {
-    const value, const bytes_read = wire.decodeVarint(u64, slice[pos..]) catch |err| {
-        return py.raise(.ValueError, switch (err) {
-            wire.Error.Truncated => "truncated varint",
-            wire.Error.VarintTooLong => "varint too long",
-            else => "decode error",
-        });
-    };
-    return .{ value, pos + bytes_read };
 }

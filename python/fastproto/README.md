@@ -2,12 +2,14 @@
 
 Fast protobuf wire format encoding/decoding for Python.
 
-`fastproto` provides low-level primitives for reading and writing protobuf wire format messages **without requiring `.proto` files or code generation**. It's inspired by Go's [easyproto](https://github.com/VictoriaMetrics/easyproto).
+`fastproto` provides low-level primitives for reading and writing protobuf wire
+format messages **without requiring `.proto` files or code generation**. It's
+inspired by Go's [easyproto](https://github.com/VictoriaMetrics/easyproto).
 
 ## Features
 
 - **No codegen required** - Work directly with field numbers and wire types
-- **Zero-copy reading** - Iterate over fields without copying data
+- **Stream-first API** - Read and write from file-like objects
 - **Fast** - Optional Zig-accelerated implementation (automatic when available)
 - **Pure Python fallback** - Works everywhere, even without compilation
 - **Proto3 compatible** - Full support for all proto3 wire types
@@ -29,136 +31,153 @@ pip install fastproto
 ### Writing Messages
 
 ```python
+import io
 import fastproto
 
-# Build a message
-writer = fastproto.Writer()
-writer.string(1, "hello")
-writer.int64(2, 42)
-writer.bool(3, True)
-data = writer.finish()
+stream = io.BytesIO()
+writer = fastproto.Writer(stream)
 
-# Nested messages
-writer = fastproto.Writer()
-writer.string(1, "parent")
-with writer.message(2) as nested:
-    nested.string(1, "child")
-    nested.int32(2, 123)
-data = writer.finish()
+writer.write_tag(1, fastproto.WireType.LEN)
+writer.write_len(b"hello")
+
+writer.write_tag(2, fastproto.WireType.VARINT)
+writer.write_scalar(fastproto.Scalar.i64, 42)
+
+writer.flush()
+
+data = stream.getvalue()
 ```
 
 ### Reading Messages
 
 ```python
+import io
 import fastproto
 
-# Iterate over fields
-for field in fastproto.Reader(data):
+reader = fastproto.Reader(io.BytesIO(data))
+
+for field in reader:
     match field.number:
         case 1:
-            name = field.string()
+            name = field.expect(fastproto.WireType.LEN).string()
         case 2:
-            value = field.int64()
-        case 3:
-            flag = field.bool()
+            value = field.expect(fastproto.WireType.VARINT).as_scalar(
+                fastproto.Scalar.i64
+            )
+```
 
-# Read nested messages
-for field in fastproto.Reader(data):
-    if field.number == 2:
-        for nested_field in field.message():
+### Nested Messages
+
+```python
+import io
+import fastproto
+
+inner_stream = io.BytesIO()
+inner = fastproto.Writer(inner_stream)
+inner.write_tag(1, fastproto.WireType.LEN)
+inner.write_len(b"child")
+inner.flush()
+inner_data = inner_stream.getvalue()
+
+outer_stream = io.BytesIO()
+outer = fastproto.Writer(outer_stream)
+outer.write_tag(1, fastproto.WireType.LEN)
+outer.write_len(inner_data)
+outer.flush()
+
+outer_data = outer_stream.getvalue()
+
+for field in fastproto.Reader(io.BytesIO(outer_data)):
+    for nested_field in field.message():
+        ...
+```
+
+### Streaming IO
+
+```python
+import fastproto
+import io
+import socket
+import tempfile
+
+stream = io.BytesIO(data)
+for field in fastproto.Reader(stream):
+    ...
+
+with tempfile.TemporaryFile() as file:
+    file.write(data)
+    file.seek(0)
+    for field in fastproto.Reader(file):
+        ...
+
+sock_a, sock_b = socket.socketpair()
+with sock_a, sock_b:
+    sock_a.sendall(data)
+    sock_a.shutdown(socket.SHUT_WR)
+    with sock_b.makefile("rb") as stream:
+        for field in fastproto.Reader(stream):
             ...
 ```
 
 ## API Reference
 
+### Enums
+
+```python
+from fastproto import Scalar, WireType
+
+WireType.VARINT
+WireType.FIXED64
+WireType.LEN
+WireType.FIXED32
+
+Scalar.i32
+Scalar.i64
+Scalar.u32
+Scalar.u64
+Scalar.sint32
+Scalar.sint64
+Scalar.bool
+Scalar.fixed64
+Scalar.sfixed64
+Scalar.double
+Scalar.fixed32
+Scalar.sfixed32
+Scalar.float
+```
+
 ### Writer
 
-The `Writer` class builds protobuf-encoded messages.
-
-#### Scalar Types
+The `Writer` class writes protobuf-encoded messages to a binary IO stream.
 
 ```python
-writer = fastproto.Writer()
+writer = fastproto.Writer(stream)
 
-# Varint types
-writer.int32(field_num, value)      # Signed 32-bit (inefficient for negatives)
-writer.int64(field_num, value)      # Signed 64-bit (inefficient for negatives)
-writer.uint32(field_num, value)     # Unsigned 32-bit
-writer.uint64(field_num, value)     # Unsigned 64-bit
-writer.sint32(field_num, value)     # ZigZag-encoded (efficient for negatives)
-writer.sint64(field_num, value)     # ZigZag-encoded (efficient for negatives)
-writer.bool(field_num, value)       # Boolean
-writer.enum(field_num, value)       # Enum (same as int32)
+writer.write_tag(field_number, WireType.VARINT)
+writer.write_scalar(Scalar.i64, 123)
 
-# Fixed-width types
-writer.fixed32(field_num, value)    # Unsigned 32-bit, fixed encoding
-writer.fixed64(field_num, value)    # Unsigned 64-bit, fixed encoding
-writer.sfixed32(field_num, value)   # Signed 32-bit, fixed encoding
-writer.sfixed64(field_num, value)   # Signed 64-bit, fixed encoding
-writer.float(field_num, value)      # 32-bit float
-writer.double(field_num, value)     # 64-bit double
+writer.write_tag(field_number, WireType.LEN)
+writer.write_len(b"payload")
 
-# Length-delimited types
-writer.string(field_num, value)     # UTF-8 string
-writer.bytes(field_num, value)      # Raw bytes
-```
-
-#### Nested Messages
-
-```python
-# Using context manager (recommended)
-with writer.message(field_num) as nested:
-    nested.string(1, "value")
-
-# Using explicit end()
-nested = writer.message(field_num)
-nested.string(1, "value")
-nested.end()
-```
-
-#### Packed Repeated Fields
-
-```python
-writer.packed_int32s(field_num, [1, 2, 3])
-writer.packed_int64s(field_num, values)
-writer.packed_uint32s(field_num, values)
-writer.packed_uint64s(field_num, values)
-writer.packed_sint32s(field_num, values)
-writer.packed_sint64s(field_num, values)
-writer.packed_bools(field_num, values)
-writer.packed_fixed32s(field_num, values)
-writer.packed_fixed64s(field_num, values)
-writer.packed_sfixed32s(field_num, values)
-writer.packed_sfixed64s(field_num, values)
-writer.packed_floats(field_num, values)
-writer.packed_doubles(field_num, values)
-```
-
-#### Finalizing
-
-```python
-data = writer.finish()  # Returns bytes
-writer.clear()          # Reset for reuse
+writer.write_varint(999)
+writer.flush()
 ```
 
 ### Reader
 
-The `Reader` class parses protobuf-encoded messages.
+The `Reader` class parses protobuf-encoded messages from binary IO streams.
 
 ```python
-reader = fastproto.Reader(data)
+reader = fastproto.Reader(stream)
 
-# Iteration
 for field in reader:
     print(field.number, field.wire_type)
 
 # Or manually
-while (field := reader.next_field()) is not None:
+while (field := reader.next()) is not None:
     ...
 
-# Utilities
-reader.remaining()  # Bytes left to read
-reader.skip()       # Skip next field, returns True if skipped
+reader.remaining()  # Bytes left to read for bounded readers
 ```
 
 ### Field
@@ -169,167 +188,36 @@ The `Field` class represents a single parsed field.
 field.number      # Field number (int)
 field.wire_type   # Wire type (WireType enum)
 
-# Read as specific type (must match wire type)
-field.int32()
-field.int64()
-field.uint32()
-field.uint64()
-field.sint32()
-field.sint64()
-field.bool()
-field.enum()
-field.fixed32()
-field.fixed64()
-field.sfixed32()
-field.sfixed64()
-field.float()
-field.double()
+field.expect(WireType.LEN)
 field.string()
 field.bytes()
-field.message()       # Returns a Reader for nested message
-field.message_data()  # Returns raw bytes
+field.message()
+field.skip()
 
-# Packed repeated (for LEN wire type)
-field.packed_int32s()
-field.packed_int64s()
-field.packed_uint32s()
-field.packed_uint64s()
-field.packed_sint32s()
-field.packed_sint64s()
-field.packed_bools()
-field.packed_fixed32s()
-field.packed_fixed64s()
-field.packed_sfixed32s()
-field.packed_sfixed64s()
-field.packed_floats()
-field.packed_doubles()
+field.expect(WireType.VARINT).as_scalar(Scalar.i64)
+field.expect(WireType.FIXED64).as_scalar(Scalar.double)
+
+field.repeated(Scalar.i32)
 ```
 
-### Wire Types
+## Benchmarks
 
-```python
-from fastproto import WireType
+M1 MacBook Pro, Python 3.14.2, Zig 0.15.2.
+Command: `pytest benchmarks/bench_encoding.py --benchmark-only`
 
-WireType.VARINT   # 0: int32, int64, uint32, uint64, sint32, sint64, bool, enum
-WireType.FIXED64  # 1: fixed64, sfixed64, double
-WireType.LEN      # 2: string, bytes, embedded messages, packed repeated
-WireType.FIXED32  # 5: fixed32, sfixed32, float
-```
-
-### Checking Implementation
-
-```python
-import fastproto
-
-if fastproto.__speedups__:
-    print("Using Zig-accelerated implementation")
-else:
-    print("Using pure Python implementation")
-```
-
-## Example: Timeseries Message
-
-Here's a complete example encoding and decoding a timeseries message:
-
-```proto
-// Equivalent .proto definition (for reference only)
-message Timeseries {
-    string name = 1;
-    repeated Sample samples = 2;
-}
-
-message Sample {
-    double value = 1;
-    int64 timestamp = 2;
-}
-```
-
-```python
-import fastproto
-from dataclasses import dataclass
-
-@dataclass
-class Sample:
-    value: float
-    timestamp: int
-
-    def encode(self) -> bytes:
-        w = fastproto.Writer()
-        w.double(1, self.value)
-        w.int64(2, self.timestamp)
-        return w.finish()
-
-    @classmethod
-    def decode(cls, data: bytes) -> "Sample":
-        value = 0.0
-        timestamp = 0
-        for field in fastproto.Reader(data):
-            match field.number:
-                case 1: value = field.double()
-                case 2: timestamp = field.int64()
-        return cls(value=value, timestamp=timestamp)
-
-@dataclass
-class Timeseries:
-    name: str
-    samples: list[Sample]
-
-    def encode(self) -> bytes:
-        w = fastproto.Writer()
-        w.string(1, self.name)
-        for sample in self.samples:
-            w.bytes(2, sample.encode())
-        return w.finish()
-
-    @classmethod
-    def decode(cls, data: bytes) -> "Timeseries":
-        name = ""
-        samples = []
-        for field in fastproto.Reader(data):
-            match field.number:
-                case 1: name = field.string()
-                case 2: samples.append(Sample.decode(field.bytes()))
-        return cls(name=name, samples=samples)
-
-# Usage
-ts = Timeseries(
-    name="cpu_usage",
-    samples=[
-        Sample(value=0.75, timestamp=1700000000),
-        Sample(value=0.82, timestamp=1700000001),
-    ]
-)
-
-encoded = ts.encode()
-decoded = Timeseries.decode(encoded)
-assert decoded == ts
-```
-
-## Performance
-
-When the Zig extension is available, `fastproto` provides significant performance improvements over pure Python.
-Example results (M1 MacBook Pro, mean time):
-
-| Benchmark | Pure Python | Zig | Speedup |
-|-----------|-------------|-----|---------|
-| Encode simple message | 2.048 us | 0.463 us | 4.4x |
-| Decode simple message | 4.065 us | 1.222 us | 3.3x |
-| Encode many fields | 50.355 us | 7.055 us | 7.1x |
-| Decode many fields | 85.426 us | 21.423 us | 4.0x |
-| Encode packed int64s | 182.933 us | 9.723 us | 18.8x |
-| Decode packed int64s | 233.994 us | 15.293 us | 15.3x |
-| Encode packed doubles | 72.345 us | 5.025 us | 14.4x |
-| Decode skip all | 7.914 us | 0.396 us | 20.0x |
-
-Run benchmarks yourself:
-
-```bash
-just bench
-```
-
-This runs parameterized benchmarks for native + pure backends in a single run
-and sorts by name so the pairs are adjacent (`[native]` / `[pure]`).
-
-## License
-
-Apache-2.0
+| Test | Native Mean (us) | Pure Mean (us) | Speedup |
+| --- | --- | --- | --- |
+| test_encode_simple | 1.30 | 3.43 | 2.65x |
+| test_decode_simple | 2.28 | 6.68 | 2.94x |
+| test_encode_large_string | 2.70 | 2.73 | 1.01x |
+| test_decode_large_string | 8.74 | 9.59 | 1.10x |
+| test_encode_nested | 14.40 | 31.15 | 2.16x |
+| test_decode_nested | 16.27 | 56.55 | 3.47x |
+| test_encode_many_fields | 16.79 | 84.36 | 5.02x |
+| test_decode_many_fields | 32.56 | 151.96 | 4.67x |
+| test_encode_packed_int64s | 68.83 | 496.35 | 7.21x |
+| test_decode_packed_int64s | 16.33 | 269.68 | 16.51x |
+| test_encode_packed_doubles | 68.83 | 523.49 | 7.61x |
+| test_decode_packed_doubles | 14.75 | 295.80 | 20.05x |
+| test_decode_skip_all | 22.39 | 112.70 | 5.03x |
+| test_roundtrip_simple | 3.56 | 10.31 | 2.89x |

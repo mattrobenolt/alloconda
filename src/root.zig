@@ -37,8 +37,6 @@ pub const BytesView = types.BytesView;
 pub const IoReader = types.IoReader;
 pub const IoWriter = types.IoWriter;
 pub const Buffer = types.Buffer;
-pub const BigInt = types.BigInt;
-pub const Int = types.Int;
 pub const List = types.List;
 pub const Dict = types.Dict;
 pub const Tuple = types.Tuple;
@@ -50,3 +48,5 @@ pub const importModule = types.importModule;
 pub const fromPy = types.fromPy;
 pub const toPy = types.toPy;
 pub const none = types.none;
+
+// TODO: BigInt/Int disabled for now; revisit once allocator boundary is explicit.

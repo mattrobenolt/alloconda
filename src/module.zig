@@ -346,6 +346,14 @@ fn Class(comptime Payload: type, comptime base: PyClass) type {
             return Object.borrowed(@ptrCast(type_ptr)).newInstance(null, null);
         }
 
+        pub fn newWithPayload(payload: Payload) PyError!Object {
+            var obj = try new();
+            errdefer obj.deinit();
+            const state = try payloadFrom(obj);
+            state.* = payload;
+            return obj;
+        }
+
         /// Return a checked instance wrapper (accepts subclasses).
         pub fn fromPy(obj: Object) PyError!Ref {
             return fromPyInner(obj, false);

@@ -5,20 +5,27 @@ wire format messages without requiring .proto files or code generation.
 
 Example usage:
 
+    import io
     import fastproto
 
-    # Writing a message
-    writer = fastproto.Writer()
-    writer.string(1, "hello")
-    writer.int64(2, 42)
-    data = writer.finish()
+    stream = io.BytesIO()
+    writer = fastproto.Writer(stream)
+    writer.write_tag(1, fastproto.WireType.LEN)
+    writer.write_len(b"hello")
+    writer.write_tag(2, fastproto.WireType.VARINT)
+    writer.write_scalar(fastproto.Scalar.i64, 42)
+    writer.flush()
 
-    # Reading a message
-    for field in fastproto.Reader(data):
+    data = stream.getvalue()
+
+    reader = fastproto.Reader(io.BytesIO(data))
+    for field in reader:
         if field.number == 1:
-            print(field.string())
+            text = field.expect(fastproto.WireType.LEN).string()
+            print(text)
         elif field.number == 2:
-            print(field.int64())
+            value = field.expect(fastproto.WireType.VARINT).as_scalar(fastproto.Scalar.i64)
+            print(value)
 
 The library automatically uses a Zig-accelerated implementation when available,
 falling back to a pure Python implementation otherwise. Check `__speedups__`
@@ -33,10 +40,28 @@ from importlib.metadata import PackageNotFoundError, version
 class WireType(IntEnum):
     """Protobuf wire types."""
 
-    VARINT = 0  # int32, int64, uint32, uint64, sint32, sint64, bool, enum
-    FIXED64 = 1  # fixed64, sfixed64, double
-    LEN = 2  # string, bytes, embedded messages, packed repeated fields
-    FIXED32 = 5  # fixed32, sfixed32, float
+    VARINT = 0
+    FIXED64 = 1
+    LEN = 2
+    FIXED32 = 5
+
+
+class Scalar(IntEnum):
+    """Scalar protobuf types."""
+
+    i32 = 0
+    i64 = 1
+    u32 = 2
+    u64 = 3
+    sint32 = 4
+    sint64 = 5
+    bool = 6
+    fixed64 = 7
+    sfixed64 = 8
+    double = 9
+    fixed32 = 10
+    sfixed32 = 11
+    float = 12
 
 
 _force_pure = os.environ.get("FASTPROTO_FORCE_PURE")
@@ -63,4 +88,5 @@ __all__ = (
     "Reader",
     "Writer",
     "WireType",
+    "Scalar",
 )

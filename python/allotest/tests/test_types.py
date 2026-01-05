@@ -118,25 +118,26 @@ class TestIntConversion:
         assert allotest.mask_u64(0x1_0000_0000_0000_0000) == 0
         assert allotest.mask_u64(-1) == 0xFFFFFFFFFFFFFFFF
 
-    def test_bigint_to_string(self) -> None:
-        value = 2**200
-        assert allotest.bigint_to_string(value) == str(value)
-        negative = -(2**200) + 123
-        assert allotest.bigint_to_string(negative) == str(negative)
-
-    def test_bigint_roundtrip(self) -> None:
-        value = 2**200
-        assert allotest.bigint_roundtrip(value) == value
-        negative = -(2**200) + 123
-        assert allotest.bigint_roundtrip(negative) == negative
-
-    def test_int_roundtrip(self) -> None:
-        assert allotest.int_roundtrip(123) == 123
-        assert allotest.int_roundtrip(-456) == -456
-        value = 2**200
-        assert allotest.int_roundtrip(value) == value
-        negative = -(2**200) + 123
-        assert allotest.int_roundtrip(negative) == negative
+    # TODO: BigInt/Int disabled for now; revisit once allocator boundary is explicit.
+    # def test_bigint_to_string(self) -> None:
+    #     value = 2**200
+    #     assert allotest.bigint_to_string(value) == str(value)
+    #     negative = -(2**200) + 123
+    #     assert allotest.bigint_to_string(negative) == str(negative)
+    #
+    # def test_bigint_roundtrip(self) -> None:
+    #     value = 2**200
+    #     assert allotest.bigint_roundtrip(value) == value
+    #     negative = -(2**200) + 123
+    #     assert allotest.bigint_roundtrip(negative) == negative
+    #
+    # def test_int_roundtrip(self) -> None:
+    #     assert allotest.int_roundtrip(123) == 123
+    #     assert allotest.int_roundtrip(-456) == -456
+    #     value = 2**200
+    #     assert allotest.int_roundtrip(value) == value
+    #     negative = -(2**200) + 123
+    #     assert allotest.int_roundtrip(negative) == negative
 
 
 class TestList:

@@ -1,142 +1,203 @@
 const std = @import("std");
 const fmt = std.fmt;
 
+const fastproto = @import("fastproto");
+const wire = fastproto.wire;
 const py = @import("alloconda");
-const wire = @import("fastproto").wire;
 
-const ByteView = @import("ByteView.zig");
 const Reader = @import("Reader.zig");
 
 pub const Field = py.class("Field", "Represents a single field from a protobuf message.", .{
-    .int32 = py.method(readField(.i32), .{ .doc = "Read as int32 (may be negative via sign extension)." }),
-    .int64 = py.method(readField(.i64), .{ .doc = "Read as int64 (may be negative via sign extension)." }),
-    .uint32 = py.method(readField(.u32), .{ .doc = "Read as uint32." }),
-    .uint64 = py.method(readField(.u64), .{ .doc = "Read as uint64." }),
-    .sint32 = py.method(readField(.sint32), .{ .doc = "Read as sint32 (ZigZag encoded)." }),
-    .sint64 = py.method(readField(.sint64), .{ .doc = "Read as sint64 (ZigZag encoded)." }),
-    .bool = py.method(readField(.bool), .{ .doc = "Read as bool." }),
-    .@"enum" = py.method(readField(.i32), .{ .doc = "Read as enum (same as int32)." }),
-    .fixed64 = py.method(readField(.fixed64), .{ .doc = "Read as fixed64." }),
-    .sfixed64 = py.method(readField(.sfixed64), .{ .doc = "Read as sfixed64." }),
-    .double = py.method(readField(.double), .{ .doc = "Read as double." }),
-    .fixed32 = py.method(readField(.fixed32), .{ .doc = "Read as fixed32." }),
-    .sfixed32 = py.method(readField(.sfixed32), .{ .doc = "Read as sfixed32." }),
-    .float = py.method(readField(.float), .{ .doc = "Read as float." }),
-    .string = py.method(fieldString, .{ .doc = "Read as UTF-8 string." }),
+    .expect = py.method(
+        fieldExpect,
+        .{ .doc = "Assert the wire type and return this field.", .args = &.{"wire_type"} },
+    ),
+    .as_scalar = py.method(
+        fieldAsScalar,
+        .{ .doc = "Read this field as the requested scalar type.", .args = &.{"scalar"} },
+    ),
     .bytes = py.method(fieldBytes, .{ .doc = "Read as raw bytes." }),
-    .message_data = py.method(fieldBytes, .{ .doc = "Get raw message data for nested message parsing." }),
+    .string = py.method(fieldString, .{ .doc = "Read as UTF-8 string." }),
     .message = py.method(fieldMessage, .{ .doc = "Read as embedded message, returning a new Reader." }),
-    .packed_int32s = py.method(readPackedField(.i32), .{ .doc = "Read as packed repeated int32." }),
-    .packed_int64s = py.method(readPackedField(.i64), .{ .doc = "Read as packed repeated int64." }),
-    .packed_uint32s = py.method(readPackedField(.u32), .{ .doc = "Read as packed repeated uint32." }),
-    .packed_uint64s = py.method(readPackedField(.u64), .{ .doc = "Read as packed repeated uint64." }),
-    .packed_sint32s = py.method(readPackedField(.sint32), .{ .doc = "Read as packed repeated sint32." }),
-    .packed_sint64s = py.method(readPackedField(.sint64), .{ .doc = "Read as packed repeated sint64." }),
-    .packed_bools = py.method(readPackedField(.bool), .{ .doc = "Read as packed repeated bool." }),
-    .packed_fixed32s = py.method(readPackedField(.fixed32), .{ .doc = "Read as packed repeated fixed32." }),
-    .packed_sfixed32s = py.method(readPackedField(.sfixed32), .{ .doc = "Read as packed repeated sfixed32." }),
-    .packed_floats = py.method(readPackedField(.float), .{ .doc = "Read as packed repeated float." }),
-    .packed_fixed64s = py.method(readPackedField(.fixed64), .{ .doc = "Read as packed repeated fixed64." }),
-    .packed_sfixed64s = py.method(readPackedField(.sfixed64), .{ .doc = "Read as packed repeated sfixed64." }),
-    .packed_doubles = py.method(readPackedField(.double), .{ .doc = "Read as packed repeated double." }),
-    .__del__ = py.method(deinit, .{ .doc = "Release held field data." }),
+    .skip = py.method(fieldSkip, .{ .doc = "Skip this length-delimited field." }),
+    .repeated = py.method(
+        fieldRepeated,
+        .{ .doc = "Read packed repeated values for this field.", .args = &.{"scalar"} },
+    ),
+    .__del__ = py.method(deinit, .{ .doc = "Release held field resources." }),
 }).withPayload(State);
 
 const State = struct {
-    number: u32 = 0,
-    wire_type: wire.WireType = .varint,
-    value: u64 = 0,
-    view: ByteView = .empty,
-
-    const empty: @This() = .{};
-
-    fn slice(self: *const @This()) ![]const u8 {
-        return self.view.slice();
-    }
+    field: fastproto.Field,
+    owner: ?py.Object = null,
 
     fn require(self: *const @This(), expected: wire.WireType) !void {
-        if (self.wire_type == expected) return;
+        const actual = fieldWireType(self.field);
+        if (actual == expected) return;
         var buf: [96]u8 = undefined;
         const msg = fmt.bufPrintZ(
             &buf,
             "wire type mismatch: expected {f}, got {f}",
-            .{ expected, self.wire_type },
+            .{ expected, actual },
         ) catch "wire type mismatch";
         return py.raise(.ValueError, msg);
     }
 
     fn deinit(self: *@This()) void {
-        self.view.deinit();
+        if (self.owner) |obj| {
+            obj.deinit();
+            self.owner = null;
+        }
         self.* = undefined;
     }
 };
 
-pub fn init(
-    number: u32,
-    wire_type: wire.WireType,
-    value: u64,
-    view: ByteView,
-) !py.Object {
-    var owned_view = view;
-    errdefer owned_view.deinit();
-    var field = try Field.new();
-    errdefer field.deinit();
-    const state = try Field.payloadFrom(field);
-    state.* = .{
-        .number = number,
-        .wire_type = wire_type,
-        .value = value,
-        .view = owned_view,
-    };
-    try field.setAttr("number", u32, number);
-    try field.setAttr("wire_type", u8, @intFromEnum(wire_type));
-    return field;
+pub fn init(field: fastproto.Field, owner: py.Object) !py.Object {
+    var obj = try Field.new();
+    errdefer obj.deinit();
+    const state = try Field.payloadFrom(obj);
+    state.* = .{ .field = field, .owner = owner.incref() };
+
+    const number = field.fieldNumber();
+    const wire_type = fieldWireType(field);
+    try obj.setAttr("number", u32, number);
+    try obj.setAttr("wire_type", u8, @intFromEnum(wire_type));
+    return obj;
 }
 
-fn fieldString(self: py.Object) ![]const u8 {
+fn fieldWireType(field: fastproto.Field) wire.WireType {
+    return switch (field) {
+        .varint => .varint,
+        .fixed64 => .fixed64,
+        .len => .len,
+        .fixed32 => .fixed32,
+    };
+}
+
+fn parseWireType(value: i64) !wire.WireType {
+    return std.meta.intToEnum(wire.WireType, @as(u3, @intCast(value)));
+}
+
+fn parseScalar(value: i64) !wire.Scalar {
+    return std.meta.intToEnum(wire.Scalar, value);
+}
+
+fn scalarWireType(scalar: wire.Scalar) wire.WireType {
+    return switch (scalar) {
+        .i32, .i64, .u32, .u64, .sint32, .sint64, .bool => .varint,
+        .fixed64, .sfixed64, .double => .fixed64,
+        .fixed32, .sfixed32, .float => .fixed32,
+    };
+}
+
+fn fieldExpect(self: py.Object, wire_type_raw: i64) !py.Object {
     const state = try Field.payloadFrom(self);
+    const expected = parseWireType(wire_type_raw) catch {
+        return py.raise(.ValueError, "invalid wire type");
+    };
+    try state.require(expected);
+    return self.incref();
+}
+
+fn fieldAsScalar(self: py.Object, scalar_raw: i64) !py.Object {
+    const state = try Field.payloadFrom(self);
+    const scalar = parseScalar(scalar_raw) catch {
+        return py.raise(.ValueError, "invalid scalar type");
+    };
+    return switch (scalar) {
+        inline .i32, .i64, .u32, .u64, .sint32, .sint64, .bool => |s| blk: {
+            try state.require(.varint);
+            const value = switch (state.field) {
+                .varint => |f| s.fromVarint(f.value),
+                else => unreachable,
+            };
+            break :blk py.Object.from(@TypeOf(value), value);
+        },
+        inline .fixed32, .sfixed32, .float => |s| blk: {
+            try state.require(.fixed32);
+            const value = switch (state.field) {
+                .fixed32 => |f| s.fromFixedBits(f.value),
+                else => unreachable,
+            };
+            break :blk py.Object.from(@TypeOf(value), value);
+        },
+        inline .fixed64, .sfixed64, .double => |s| blk: {
+            try state.require(.fixed64);
+            const value = switch (state.field) {
+                .fixed64 => |f| s.fromFixedBits(f.value),
+                else => unreachable,
+            };
+            break :blk py.Object.from(@TypeOf(value), value);
+        },
+    };
+}
+
+fn fieldLen(state: *const State) !fastproto.reader.Field.Len {
     try state.require(.len);
-    return state.slice();
+    return switch (state.field) {
+        .len => |len| len,
+        else => unreachable,
+    };
+}
+
+fn fieldString(self: py.Object) !py.Object {
+    const state = try Field.payloadFrom(self);
+    const len_field = try fieldLen(state);
+    const data = len_field.bytesAlloc(py.allocator) catch |err| {
+        return raiseWireError(err);
+    };
+    defer py.allocator.free(data);
+    return py.Object.from([]const u8, data) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.PythonError => {
+            if (py.ffi.PyErr.exceptionMatches(.MemoryError)) return error.OutOfMemory;
+            if (py.ffi.PyErr.exceptionMatches(.ValueError)) {
+                return py.raise(.ValueError, "invalid utf-8");
+            }
+            return err;
+        },
+    };
 }
 
 fn fieldBytes(self: py.Object) !py.Bytes {
-    return .fromSlice(try fieldString(self));
+    const state = try Field.payloadFrom(self);
+    const len_field = try fieldLen(state);
+    const data = len_field.bytesAlloc(py.allocator) catch |err| {
+        return raiseWireError(err);
+    };
+    defer py.allocator.free(data);
+    return py.Bytes.fromSlice(data);
 }
 
 fn fieldMessage(self: py.Object) !py.Object {
     const state = try Field.payloadFrom(self);
-    try state.require(.len);
-    const view = try state.view.clone();
-    return Reader.newFromView(view);
+    const len_field = try fieldLen(state);
+    const owner = state.owner orelse return py.raise(.RuntimeError, "field missing owner");
+    const nested = len_field.message();
+    return Reader.newFromReader(nested, owner);
 }
 
-fn deinit(self: py.Object) void {
-    const state = Field.payloadFrom(self) catch return;
-    state.deinit();
+fn fieldSkip(self: py.Object) !void {
+    const state = try Field.payloadFrom(self);
+    const len_field = try fieldLen(state);
+    len_field.skip() catch |err| {
+        return raiseWireError(err);
+    };
 }
 
-fn readField(comptime scalar: wire.Scalar) fn (py.Object) anyerror!wire.Scalar.Type(scalar) {
-    return struct {
-        fn read(self: py.Object) !wire.Scalar.Type(scalar) {
-            const state = try Field.payloadFrom(self);
-            try state.require(scalar.wireType());
-            return switch (comptime scalar.wireType()) {
-                .varint => scalar.fromVarint(state.value),
-                .fixed32, .fixed64 => scalar.fromFixedBits(state.value),
-                else => @compileError("readField expects a packed scalar"),
-            };
-        }
-    }.read;
-}
-
-fn readPackedField(comptime scalar: wire.Scalar) fn (py.Object) anyerror!py.List {
-    return struct {
-        fn readPacked(self: py.Object) !py.List {
-            const state = try Field.payloadFrom(self);
-            try state.require(.len);
-            return decodePackedSlice(try state.slice(), scalar);
-        }
-    }.readPacked;
+fn fieldRepeated(self: py.Object, scalar_raw: i64) !py.List {
+    const state = try Field.payloadFrom(self);
+    const scalar = parseScalar(scalar_raw) catch {
+        return py.raise(.ValueError, "invalid scalar type");
+    };
+    const len_field = try fieldLen(state);
+    const data = len_field.bytesAlloc(py.allocator) catch |err| {
+        return raiseWireError(err);
+    };
+    defer py.allocator.free(data);
+    return switch (scalar) {
+        inline else => |s| decodePackedSlice(data, s),
+    };
 }
 
 fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
@@ -147,11 +208,7 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
             var offset: usize = 0;
             while (offset < slice.len) {
                 const value, const bytes_read = wire.decodeVarint(u64, slice[offset..]) catch |err| {
-                    return py.raise(.ValueError, switch (err) {
-                        wire.Error.Truncated => "truncated varint",
-                        wire.Error.VarintTooLong => "varint too long",
-                        else => "decode error",
-                    });
+                    return raiseWireError(err);
                 };
                 offset += bytes_read;
                 const out = scalar.fromVarint(value);
@@ -191,4 +248,23 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
         },
         else => @compileError("decodePackedSlice expects a packed scalar"),
     }
+}
+
+fn raiseWireError(err: anyerror) py.PyError {
+    return py.raiseError(err, &.{
+        .{ .err = wire.Error.Truncated, .kind = .ValueError, .msg = "truncated field" },
+        .{ .err = wire.Error.VarintTooLong, .kind = .ValueError, .msg = "varint too long" },
+        .{ .err = wire.Error.InvalidWireType, .kind = .ValueError, .msg = "invalid wire type" },
+        .{ .err = wire.Error.InvalidFieldNumber, .kind = .ValueError, .msg = "invalid field number" },
+        .{ .err = wire.Error.FieldNumberTooLarge, .kind = .ValueError, .msg = "field number too large" },
+        .{ .err = wire.Error.WireTypeMismatch, .kind = .ValueError, .msg = "wire type mismatch" },
+        .{ .err = wire.Error.BufferTooSmall, .kind = .ValueError, .msg = "buffer too small" },
+        .{ .err = wire.Error.InvalidUtf8, .kind = .ValueError, .msg = "invalid utf-8" },
+        .{ .err = wire.Error.ReadFailed, .kind = .RuntimeError, .msg = "read failed" },
+    });
+}
+
+fn deinit(self: py.Object) void {
+    const state = Field.payloadFrom(self) catch return;
+    state.deinit();
 }

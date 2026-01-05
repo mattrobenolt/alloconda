@@ -29,9 +29,7 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .int64_or_uint64 = py.function(int64_or_uint64, .{ .doc = "Parse int as signed/unsigned 64-bit" }),
     .mask_u32 = py.function(mask_u32, .{ .doc = "Mask int to u32" }),
     .mask_u64 = py.function(mask_u64, .{ .doc = "Mask int to u64" }),
-    .bigint_to_string = py.function(bigint_to_string, .{ .doc = "Convert bigint to decimal string" }),
-    .bigint_roundtrip = py.function(bigint_roundtrip, .{ .doc = "Roundtrip bigint through py.BigInt" }),
-    .int_roundtrip = py.function(int_roundtrip, .{ .doc = "Roundtrip int through py.Int" }),
+    // TODO: BigInt/Int disabled for now; revisit once allocator boundary is explicit.
 
     // Bytes operations
     .bytes_len = py.function(bytes_len, .{ .doc = "Return length of bytes" }),
@@ -235,27 +233,28 @@ fn mask_u64(value: py.Object) ?u64 {
     return py.Long.unsignedMask(value) catch return null;
 }
 
-fn bigint_to_string(value: py.BigInt) !py.Object {
-    var big = value;
-    defer big.deinit();
-    const text = big.value.toConst().toStringAlloc(py.allocator, 10, .lower) catch {
-        return py.raise(.MemoryError, "out of memory");
-    };
-    defer py.allocator.free(text);
-    return .from([]const u8, text);
-}
-
-fn bigint_roundtrip(value: py.BigInt) !py.Object {
-    var big = value;
-    defer big.deinit();
-    return big.toObject();
-}
-
-fn int_roundtrip(value: py.Int) !py.Object {
-    var int_value = value;
-    defer int_value.deinit();
-    return int_value.toObject();
-}
+// TODO: BigInt/Int disabled for now; revisit once allocator boundary is explicit.
+// fn bigint_to_string(value: py.BigInt) !py.Object {
+//     var big = value;
+//     defer big.deinit();
+//     const text = big.value.toConst().toStringAlloc(py.allocator, 10, .lower) catch {
+//         return py.raise(.MemoryError, "out of memory");
+//     };
+//     defer py.allocator.free(text);
+//     return .from([]const u8, text);
+// }
+//
+// fn bigint_roundtrip(value: py.BigInt) !py.Object {
+//     var big = value;
+//     defer big.deinit();
+//     return big.toObject(py.allocator);
+// }
+//
+// fn int_roundtrip(value: py.Int) !py.Object {
+//     var int_value = value;
+//     defer int_value.deinit();
+//     return int_value.toObject();
+// }
 
 // ============================================================================
 // Bytes Operations

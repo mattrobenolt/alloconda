@@ -4,7 +4,6 @@ const math = std.math;
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const Io = std.Io;
-const big_int = math.big.int;
 
 const errors = @import("errors.zig");
 const raise = errors.raise;
@@ -117,6 +116,10 @@ pub const Object = struct {
     /// Check if the object is a dict.
     pub fn isDict(self: Object) bool {
         return checkDict(self.ptr);
+    }
+
+    pub fn isBuffer(self: Object) bool {
+        return checkBuffer(self.ptr);
     }
 
     /// Borrow the UTF-8 slice for a Unicode object.
@@ -603,7 +606,7 @@ pub const Buffer = struct {
 
     /// Request a buffer view from a buffer-capable object; release when done.
     pub fn fromObject(obj: Object) PyError!Buffer {
-        if (!checkBuffer(obj.ptr)) return raise(.TypeError, "expected buffer");
+        if (!obj.isBuffer()) return raise(.TypeError, "expected buffer");
         return init(obj);
     }
 
@@ -630,93 +633,92 @@ pub const Buffer = struct {
     }
 };
 
-/// Wrapper for arbitrary-precision Python integers.
-pub const BigInt = struct {
-    value: big_int.Managed,
-
-    pub fn deinit(self: *BigInt) void {
-        self.value.deinit();
-    }
-
-    pub fn fromObject(obj: Object) PyError!BigInt {
-        const gpa = ffi.allocator;
-        if (!obj.isLong()) return raise(.TypeError, "expected int");
-
-        const text_obj = try PyObject.str(obj.ptr);
-        defer PyObject.decRef(text_obj);
-        const text = try PyUnicode.slice(text_obj);
-        var managed: big_int.Managed = try .init(gpa);
-
-        errdefer managed.deinit();
-        managed.setString(10, text) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                error.InvalidCharacter, error.InvalidBase => raise(.ValueError, "invalid integer string"),
-            };
-        };
-        return .{ .value = managed };
-    }
-
-    pub fn toPyObject(self: BigInt) PyError!*c.PyObject {
-        const gpa = ffi.allocator;
-        const text = try self.value.toConst().toStringAlloc(gpa, 10, .lower);
-        defer gpa.free(text);
-        const buf = try gpa.alloc(u8, text.len + 1);
-        defer gpa.free(buf);
-        @memcpy(buf[0..text.len], text);
-        buf[text.len] = 0;
-        const text_z: [:0]const u8 = buf[0..text.len :0];
-        return PyLong.fromString(text_z);
-    }
-
-    /// Return an owned Object (increments if needed).
-    pub fn toObject(self: BigInt) PyError!Object {
-        const obj = try self.toPyObject();
-        return .owned(obj);
-    }
-};
-
-/// Unified Python int representation: fast 64-bit or allocated bigint.
-pub const Int = union(enum) {
-    small: Long,
-    big: BigInt,
-
-    pub fn deinit(self: *Int) void {
-        switch (self.*) {
-            .big => |*big| big.deinit(),
-            .small => {},
-        }
-    }
-
-    pub fn fromObject(obj: Object) PyError!Int {
-        if (!obj.isLong()) return raise(.TypeError, "expected int");
-        const parsed = try PyLong.asLongLongAndOverflow(obj.ptr);
-        if (parsed.overflow == 0) {
-            return .{ .small = .{ .signed = @intCast(parsed.value) } };
-        }
-        if (parsed.overflow > 0) {
-            const unsigned_value = PyLong.asUnsignedLongLong(obj.ptr) catch {
-                PyErr.clear();
-                return .{ .big = try .fromObject(obj) };
-            };
-            return .{ .small = .{ .unsigned = unsigned_value } };
-        }
-        return .{ .big = try .fromObject(obj) };
-    }
-
-    pub fn toPyObject(value: Int) PyError!*c.PyObject {
-        return switch (value) {
-            .small => |small| Long.toPyObject(small),
-            .big => |big| big.toPyObject(),
-        };
-    }
-
-    /// Return an owned Object (increments if needed).
-    pub fn toObject(value: Int) PyError!Object {
-        const obj = try value.toPyObject();
-        return .owned(obj);
-    }
-};
+// TODO: Bring BigInt/Int back once allocator story is explicit at the API boundary.
+// /// Wrapper for arbitrary-precision Python integers.
+// pub const BigInt = struct {
+//     value: big_int.Managed,
+//
+//     pub fn deinit(self: *BigInt) void {
+//         self.value.deinit();
+//     }
+//
+//     pub fn fromObject(obj: Object, allocator: Allocator) PyError!BigInt {
+//         if (!obj.isLong()) return raise(.TypeError, "expected int");
+//
+//         const text_obj = try PyObject.str(obj.ptr);
+//         defer PyObject.decRef(text_obj);
+//         const text = try PyUnicode.slice(text_obj);
+//         var managed: big_int.Managed = try .init(allocator);
+//
+//         errdefer managed.deinit();
+//         managed.setString(10, text) catch |err| {
+//             return switch (err) {
+//                 error.OutOfMemory => error.OutOfMemory,
+//                 error.InvalidCharacter, error.InvalidBase => raise(.ValueError, "invalid integer string"),
+//             };
+//         };
+//         return .{ .value = managed };
+//     }
+//
+//     pub fn toPyObject(self: BigInt, allocator: Allocator) PyError!*c.PyObject {
+//         const text = try self.value.toConst().toStringAlloc(allocator, 10, .lower);
+//         defer allocator.free(text);
+//         const buf = try allocator.alloc(u8, text.len + 1);
+//         defer allocator.free(buf);
+//         @memcpy(buf[0..text.len], text);
+//         buf[text.len] = 0;
+//         const text_z: [:0]const u8 = buf[0..text.len :0];
+//         return PyLong.fromString(text_z);
+//     }
+//
+//     /// Return an owned Object (increments if needed).
+//     pub fn toObject(self: BigInt, allocator: Allocator) PyError!Object {
+//         const obj = try self.toPyObject(allocator);
+//         return .owned(obj);
+//     }
+// };
+//
+// /// Unified Python int representation: fast 64-bit or allocated bigint.
+// pub const Int = union(enum) {
+//     small: Long,
+//     big: BigInt,
+//
+//     pub fn deinit(self: *Int) void {
+//         switch (self.*) {
+//             .big => |*big| big.deinit(),
+//             .small => {},
+//         }
+//     }
+//
+//     pub fn fromObject(obj: Object) PyError!Int {
+//         if (!obj.isLong()) return raise(.TypeError, "expected int");
+//         const parsed = try PyLong.asLongLongAndOverflow(obj.ptr);
+//         if (parsed.overflow == 0) {
+//             return .{ .small = .{ .signed = @intCast(parsed.value) } };
+//         }
+//         if (parsed.overflow > 0) {
+//             const unsigned_value = PyLong.asUnsignedLongLong(obj.ptr) catch {
+//                 PyErr.clear();
+//                 return .{ .big = try .fromObject(obj) };
+//             };
+//             return .{ .small = .{ .unsigned = unsigned_value } };
+//         }
+//         return .{ .big = try .fromObject(obj) };
+//     }
+//
+//     pub fn toPyObject(value: Int) PyError!*c.PyObject {
+//         return switch (value) {
+//             .small => |small| Long.toPyObject(small),
+//             .big => |big| big.toPyObject(),
+//         };
+//     }
+//
+//     /// Return an owned Object (increments if needed).
+//     pub fn toObject(value: Int) PyError!Object {
+//         const obj = try value.toPyObject();
+//         return .owned(obj);
+//     }
+// };
 
 /// Result of parsing a Python int into a 64-bit signed/unsigned value.
 pub const Long = union(enum) {
@@ -1064,10 +1066,10 @@ pub const Tuple = struct {
     }
 
     /// Convert this tuple into an owned Zig slice; caller must free the buffer.
-    pub fn toSlice(self: Tuple, comptime T: type, gpa: Allocator) PyError![]T {
+    pub fn toSlice(self: Tuple, comptime T: type, allocator: Allocator) PyError![]T {
         const size = try self.len();
-        const buffer = gpa.alloc(T, size) catch return raise(.MemoryError, "out of memory");
-        errdefer gpa.free(buffer);
+        const buffer = allocator.alloc(T, size) catch return raise(.MemoryError, "out of memory");
+        errdefer allocator.free(buffer);
         for (0..size) |i| {
             const item = try self.get(i);
             const value = try fromPy(T, item.ptr);
@@ -1174,9 +1176,8 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) PyError!T {
         Object => Object.borrowed(ptr),
         Bytes => try Bytes.fromObject(.borrowed(ptr)),
         BytesView => try BytesView.fromObject(.borrowed(ptr)),
-        BigInt => try BigInt.fromObject(.borrowed(ptr)),
         Long => try Long.fromObject(.borrowed(ptr)),
-        Int => try Int.fromObject(.borrowed(ptr)),
+        // BigInt/Int disabled for now; revisit once allocator boundary is explicit.
         Buffer => try Buffer.fromObject(.borrowed(ptr)),
         List => try List.fromObject(.borrowed(ptr)),
         Tuple => try Tuple.fromObject(.borrowed(ptr)),
@@ -1234,9 +1235,7 @@ pub fn toPy(comptime T: type, value: T) PyError!*c.PyObject {
         // Wrapper types - transfer or share ownership appropriately.
         Object => value.toPyObject(),
         Bytes => value.toPyObject(),
-        BigInt => value.toPyObject(),
         Long => value.toPyObject(),
-        Int => value.toPyObject(),
         List => value.toPyObject(),
         Tuple => value.toPyObject(),
         Dict => value.toPyObject(),

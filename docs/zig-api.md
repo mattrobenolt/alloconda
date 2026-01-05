@@ -125,7 +125,7 @@ Use `py.BytesView` for zero-copy access to bytes or buffer-backed inputs.
 
 Use `py.IoReader` and `py.IoWriter` to wrap Python binary streams (`readinto`/`write`)
 with the Zig 0.15 `std.Io.Reader`/`std.Io.Writer` interfaces. For direct reads into
-your buffers, initialize with an empty internal buffer (`&.{}`):
+your buffers, initialize with `initUnbuffered`:
 
 ```zig
 var reader: py.IoReader = try .initUnbufffered(stream);
