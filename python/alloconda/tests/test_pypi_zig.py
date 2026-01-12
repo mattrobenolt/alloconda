@@ -22,24 +22,56 @@ class TestResolveZigCommand:
         importlib.util.find_spec("ziglang") is None,
         reason="ziglang package not installed",
     )
-    def test_with_pypi_zig(self) -> None:
+    def test_with_pypi_zig_explicit(self) -> None:
         """Returns python -m ziglang when use_pypi_zig=True."""
         from alloconda.cli_helpers import resolve_zig_command
 
         cmd = resolve_zig_command(use_pypi_zig=True)
         assert cmd == [sys.executable, "-m", "ziglang"]
 
-    def test_without_pypi_zig(self) -> None:
-        """Returns zig when use_pypi_zig=False."""
-        from alloconda.cli_helpers import resolve_zig_command
-
-        cmd = resolve_zig_command(use_pypi_zig=False)
-        assert cmd == ["zig"]
-
-    def test_raises_when_ziglang_not_installed(
+    def test_uses_system_zig_when_available(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Raises ClickException when ziglang not installed."""
+        """Returns zig when system zig is available."""
+        from alloconda import cli_helpers
+
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None)
+
+        cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
+        assert cmd == ["zig"]
+
+    def test_falls_back_to_ziglang_when_no_system_zig(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Falls back to ziglang PyPI when system zig not found."""
+        from alloconda import cli_helpers
+
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        monkeypatch.setattr(
+            importlib.util, "find_spec", lambda x: MagicMock() if x == "ziglang" else None
+        )
+
+        cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
+        assert cmd == [sys.executable, "-m", "ziglang"]
+
+    def test_raises_when_no_zig_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raises ClickException when neither system zig nor ziglang available."""
+        import click
+        from alloconda import cli_helpers
+
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
+
+        with pytest.raises(click.ClickException) as exc_info:
+            cli_helpers.resolve_zig_command(use_pypi_zig=False)
+        assert "No zig installation found" in str(exc_info.value)
+
+    def test_raises_when_pypi_zig_forced_but_not_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raises ClickException when use_pypi_zig=True but ziglang not installed."""
         import click
         from alloconda import cli_helpers
 
@@ -147,7 +179,7 @@ class TestRunZigBuild:
         assert "build" in captured_cmd
 
     def test_uses_system_zig_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Verify run_zig_build invokes zig when use_pypi_zig=False."""
+        """Verify run_zig_build invokes zig when system zig available."""
         from alloconda import cli_helpers
 
         captured_cmd: list[str] = []
@@ -157,6 +189,7 @@ class TestRunZigBuild:
             return MagicMock(returncode=0)
 
         monkeypatch.setattr("subprocess.run", fake_subprocess_run)
+        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None)
 
         cli_helpers.run_zig_build(
             release=True,
