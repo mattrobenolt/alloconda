@@ -41,6 +41,7 @@ Options:
 - `--zig-target`: Zig target triple for cross builds
 - `--python-include`: cross-build Python include path
 - `--no-init` / `--force-init`: control `__init__.py` generation
+- `--use-pypi-zig`: use the `ziglang` PyPI package instead of system zig
 
 ### `alloconda wheel`
 
@@ -60,6 +61,7 @@ Options:
 - `--out-dir`: wheel output directory (default: `dist/`)
 - `--skip-build`: skip `zig build` if you already built the library
 - `--no-fetch`: disable automatic header downloads
+- `--use-pypi-zig`: use the `ziglang` PyPI package instead of system zig
 
 Missing python-build-standalone headers are fetched automatically when
 `--python-version` is specified. Use `--no-fetch` to require a pre-populated cache.
@@ -100,6 +102,7 @@ Options:
 - `--no-init` / `--force-init`: control `__init__.py` generation
 - `--pip-arg`: extra args passed through to pip (repeatable)
 - `--uv`: use `uv pip` (auto-selected if pip is missing)
+- `--use-pypi-zig`: use the `ziglang` PyPI package instead of system zig
 
 ### `alloconda init`
 
@@ -118,6 +121,7 @@ Options:
 - `--dir` to choose a target directory
 - `--alloconda-path` to use a local checkout or `git+https` URL
 - `--force` to overwrite existing files
+- `--use-pypi-zig`: use the `ziglang` PyPI package instead of system zig
 
 If `--alloconda-path` is omitted, alloconda is fetched from GitHub and pinned in
 `build.zig.zon`.
@@ -185,6 +189,7 @@ manylinux = "2_28"
 arch = "x86_64"
 include = ["*.pyi"]
 exclude = ["tests/*"]
+use-pypi-zig = true
 ```
 
 Release is the default. Use `--debug` to build with `-Doptimize=Debug`; `optimize`
@@ -192,3 +197,16 @@ only affects release builds. CLI flags and PEP 517 `--config-settings` override
 these values.
 
 Use `build-step` to run a specific Zig build step (e.g. `lib` runs `zig build lib`).
+
+## Using the ziglang PyPI package
+
+If Zig is not installed system-wide, alloconda can use the `ziglang` PyPI package
+instead. Install it with:
+
+```bash
+pip install ziglang
+```
+
+Then pass `--use-pypi-zig` to any build command, or set `use-pypi-zig = true` in
+`[tool.alloconda]`. This invokes Zig via `python -m ziglang` rather than the
+system `zig` binary.
