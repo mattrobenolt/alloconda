@@ -53,6 +53,7 @@
             gh
             bun
             wrangler
+            zigdoc
           ];
         };
       }

@@ -35,7 +35,9 @@ class TestResolveZigCommand:
         """Returns zig when system zig is available."""
         from alloconda import cli_helpers
 
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None)
+        monkeypatch.setattr(
+            "shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None
+        )
 
         cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
         assert cmd == ["zig"]
@@ -48,7 +50,9 @@ class TestResolveZigCommand:
 
         monkeypatch.setattr("shutil.which", lambda _: None)
         monkeypatch.setattr(
-            importlib.util, "find_spec", lambda x: MagicMock() if x == "ziglang" else None
+            importlib.util,
+            "find_spec",
+            lambda x: MagicMock() if x == "ziglang" else None,
         )
 
         cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
@@ -74,6 +78,7 @@ class TestResolveZigCommand:
     ) -> None:
         """Raises ClickException when no zig, ziglang, or uvx available."""
         import click
+
         from alloconda import cli_helpers
 
         monkeypatch.setattr("shutil.which", lambda _: None)
@@ -88,6 +93,7 @@ class TestResolveZigCommand:
     ) -> None:
         """Raises ClickException when use_pypi_zig=True but ziglang not installed."""
         import click
+
         from alloconda import cli_helpers
 
         monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
@@ -204,7 +210,9 @@ class TestRunZigBuild:
             return MagicMock(returncode=0)
 
         monkeypatch.setattr("subprocess.run", fake_subprocess_run)
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None)
+        monkeypatch.setattr(
+            "shutil.which", lambda x: "/usr/bin/zig" if x == "zig" else None
+        )
 
         cli_helpers.run_zig_build(
             release=True,

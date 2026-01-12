@@ -65,7 +65,6 @@ b.addExecutable(.{
 - `camelCase` for functions and methods
 - `snake_case` for variables and parameters
 - `PascalCase` for types, structs, and enums
-- `SCREAMING_SNAKE_CASE` for constants
 
 **Type inference with anonymous literals:** Prefer explicit type annotation with `.` access:
 ```zig
@@ -112,6 +111,12 @@ const Allocator = mem.Allocator;  // Always alias this common type
 **Functions:** Order methods as `init` → `deinit` → public API → private helpers
 
 **Memory:** Pass allocators explicitly, use `errdefer` for cleanup on error
+
+**Allocator argument order:** When a function takes an allocator, it should be the first argument (after comptime type parameters):
+```zig
+fn process(allocator: Allocator, data: []const u8) !void { ... }  // Good
+fn process(data: []const u8, allocator: Allocator) !void { ... }  // Avoid
+```
 
 **Documentation:** Use `///` for public API, `//` for implementation notes. Always explain *why*, not just *what*.
 

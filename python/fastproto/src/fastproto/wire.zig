@@ -308,8 +308,13 @@ pub const Scalar = enum {
         return @sizeOf(self.Type());
     }
 
-    /// Get the WireType for this scalar.
+    /// Get the WireType for this scalar (comptime version).
     pub fn wireType(comptime self: Scalar) WireType {
+        return self.wireTypeRuntime();
+    }
+
+    /// Get the WireType for this scalar (runtime version).
+    pub fn wireTypeRuntime(self: Scalar) WireType {
         return switch (self) {
             .i32, .i64, .u32, .u64, .sint32, .sint64, .bool => .varint,
             .fixed64, .sfixed64, .double => .fixed64,
@@ -357,6 +362,24 @@ pub const Scalar = enum {
             .double => @as(f64, @bitCast(value)),
             else => @compileError("fromFixedBits expects a fixed scalar"),
         };
+    }
+
+    pub fn fromProtoType(name: ?[]const u8) ?Scalar {
+        const pt = name orelse return null;
+        if (std.mem.eql(u8, pt, "int32")) return .i32;
+        if (std.mem.eql(u8, pt, "int64")) return .i64;
+        if (std.mem.eql(u8, pt, "uint32")) return .u32;
+        if (std.mem.eql(u8, pt, "uint64")) return .u64;
+        if (std.mem.eql(u8, pt, "sint32")) return .sint32;
+        if (std.mem.eql(u8, pt, "sint64")) return .sint64;
+        if (std.mem.eql(u8, pt, "fixed32")) return .fixed32;
+        if (std.mem.eql(u8, pt, "fixed64")) return .fixed64;
+        if (std.mem.eql(u8, pt, "sfixed32")) return .sfixed32;
+        if (std.mem.eql(u8, pt, "sfixed64")) return .sfixed64;
+        if (std.mem.eql(u8, pt, "float")) return .float;
+        if (std.mem.eql(u8, pt, "double")) return .double;
+        if (std.mem.eql(u8, pt, "bool")) return .bool;
+        return null;
     }
 };
 

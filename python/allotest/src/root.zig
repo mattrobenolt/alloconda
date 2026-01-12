@@ -84,6 +84,7 @@ pub const MODULE = py.module("Alloconda test suite module.", .{
     .is_list = py.function(is_list, .{ .doc = "Check if object is list" }),
     .is_tuple = py.function(is_tuple, .{ .doc = "Check if object is tuple" }),
     .is_dict = py.function(is_dict, .{ .doc = "Check if object is dict" }),
+    .is_dataclass = py.function(is_dataclass, .{ .doc = "Check if object is a dataclass" }),
 
     // Error handling - each exception type
     .raise_type_error = py.function(raise_type_error, .{ .doc = "Raise TypeError" }),
@@ -537,6 +538,10 @@ fn is_tuple(obj: py.Object) bool {
 
 fn is_dict(obj: py.Object) bool {
     return obj.isDict();
+}
+
+fn is_dataclass(obj: py.Object) !bool {
+    return obj.isDataclass();
 }
 
 // ============================================================================

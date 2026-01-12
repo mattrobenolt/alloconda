@@ -1,10 +1,12 @@
 const std = @import("std");
-const math = std.math;
 const intToEnum = std.meta.intToEnum;
 
 const fastproto = @import("fastproto");
 const wire = fastproto.wire;
 const py = @import("alloconda");
+
+const wrap = @import("errors.zig").wrap;
+const writeScalarValue = @import("scalar.zig").writeScalarValue;
 
 const default_buffer_size = 8192;
 
@@ -48,9 +50,9 @@ fn writerInit(self: py.Object, stream: py.Object) !void {
     const state = try Writer.payloadFrom(self);
     state.deinit();
 
-    const io_writer = try py.IoWriter.init(stream, &state.buffer);
+    const io_writer: py.IoWriter = try .init(stream, &state.buffer);
     state.io = io_writer;
-    state.writer = fastproto.Writer.init(&state.io.?.interface);
+    state.writer = .init(&state.io.?.interface);
 }
 
 fn writerWriteTag(self: py.Object, field_number: i64, wire_type_raw: i64) !void {
@@ -97,16 +99,16 @@ fn writerFlush(self: py.Object) !void {
 fn writeTag(writer: *fastproto.Writer, field_number: i64, wire_type: wire.WireType) !void {
     if (field_number < 1) return py.raise(.ValueError, "field number must be >= 1");
     if (field_number > 0x1FFFFFFF) return py.raise(.ValueError, "field number too large");
-    const tag = wire.Tag.must(@intCast(field_number), wire_type);
-    writer.writeTag(tag) catch |err| return raiseWriteError(err);
+    const tag: wire.Tag = .must(@intCast(field_number), wire_type);
+    try wrap(writer.writeTag(tag));
 }
 
 fn writeLen(writer: *fastproto.Writer, value: []const u8) !void {
-    writer.writeLen(value) catch |err| return raiseWriteError(err);
+    try wrap(writer.writeLen(value));
 }
 
 fn writeVarint(comptime T: type, writer: *fastproto.Writer, value: T) !void {
-    writer.writeVarint(T, value) catch |err| return raiseWriteError(err);
+    try wrap(writer.writeVarint(T, value));
 }
 
 fn parseScalar(value: i64) !wire.Scalar {
@@ -115,77 +117,6 @@ fn parseScalar(value: i64) !wire.Scalar {
 
 fn parseWireType(value: i64) !wire.WireType {
     return intToEnum(wire.WireType, @as(u3, @intCast(value)));
-}
-
-fn raiseWriteError(err: anyerror) py.PyError {
-    if (err == error.WriteFailed) {
-        py.reraise() catch {};
-        return py.raise(.RuntimeError, "write failed");
-    }
-    if (err == error.OutOfMemory) return error.OutOfMemory;
-    return py.raise(.RuntimeError, "write failed");
-}
-
-fn writeScalarValue(writer: *fastproto.Writer, scalar: wire.Scalar, value: py.Object) !void {
-    switch (scalar) {
-        .i32 => {
-            const raw = try value.as(i64);
-            const cast = math.cast(i32, raw) orelse return py.raise(.OverflowError, "integer out of range");
-            writer.writeScalar(.i32, cast) catch |err| return raiseWriteError(err);
-        },
-        .i64 => {
-            const raw = try value.as(i64);
-            writer.writeScalar(.i64, raw) catch |err| return raiseWriteError(err);
-        },
-        .u32 => {
-            const masked = try py.Long.unsignedMask(value);
-            const cast: u32 = @truncate(masked);
-            writer.writeScalar(.u32, cast) catch |err| return raiseWriteError(err);
-        },
-        .u64 => {
-            const masked = try py.Long.unsignedMask(value);
-            writer.writeScalar(.u64, masked) catch |err| return raiseWriteError(err);
-        },
-        .sint32 => {
-            const raw = try value.as(i64);
-            const cast = math.cast(i32, raw) orelse return py.raise(.OverflowError, "integer out of range");
-            writer.writeScalar(.sint32, cast) catch |err| return raiseWriteError(err);
-        },
-        .sint64 => {
-            const raw = try value.as(i64);
-            writer.writeScalar(.sint64, raw) catch |err| return raiseWriteError(err);
-        },
-        .bool => {
-            const raw = try value.as(bool);
-            writer.writeScalar(.bool, raw) catch |err| return raiseWriteError(err);
-        },
-        .fixed64 => {
-            const masked = try py.Long.unsignedMask(value);
-            writer.writeScalar(.fixed64, masked) catch |err| return raiseWriteError(err);
-        },
-        .sfixed64 => {
-            const raw = try value.as(i64);
-            writer.writeScalar(.sfixed64, raw) catch |err| return raiseWriteError(err);
-        },
-        .double => {
-            const raw = try value.as(f64);
-            writer.writeScalar(.double, raw) catch |err| return raiseWriteError(err);
-        },
-        .fixed32 => {
-            const masked = try py.Long.unsignedMask(value);
-            const cast: u32 = @truncate(masked);
-            writer.writeScalar(.fixed32, cast) catch |err| return raiseWriteError(err);
-        },
-        .sfixed32 => {
-            const raw = try value.as(i64);
-            const cast = math.cast(i32, raw) orelse return py.raise(.OverflowError, "integer out of range");
-            writer.writeScalar(.sfixed32, cast) catch |err| return raiseWriteError(err);
-        },
-        .float => {
-            const raw = try value.as(f32);
-            writer.writeScalar(.float, raw) catch |err| return raiseWriteError(err);
-        },
-    }
 }
 
 fn flushStream(stream: py.Object) !void {

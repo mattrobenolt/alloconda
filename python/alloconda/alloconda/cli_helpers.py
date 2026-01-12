@@ -146,7 +146,9 @@ def should_include_path(
     return True
 
 
-def resolve_python_include(python_include: str | None, zig_target: str | None) -> str | None:
+def resolve_python_include(
+    python_include: str | None, zig_target: str | None
+) -> str | None:
     """Resolve Python include path, auto-detecting from running interpreter if needed.
 
     For native builds (no zig_target), we auto-detect from sysconfig to ensure

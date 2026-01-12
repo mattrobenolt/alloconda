@@ -1,6 +1,5 @@
 const std = @import("std");
 const fmt = std.fmt;
-const math = std.math;
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const Io = std.Io;
@@ -25,6 +24,7 @@ const PyMemoryView = ffi.PyMemoryView;
 const PyLong = ffi.PyLong;
 const PyFloat = ffi.PyFloat;
 const PyBool = ffi.PyBool;
+const math = @import("math.zig");
 
 /// Wrapper for a Python object with ownership tracking.
 pub const Object = struct {
@@ -127,6 +127,16 @@ pub const Object = struct {
         return checkBuffer(self.ptr);
     }
 
+    /// Check if this object is a dataclass (type or instance).
+    pub fn isDataclass(self: Object) PyError!bool {
+        const dataclasses_mod = dataclasses();
+        const is_dataclass_func = try dataclasses_mod.getAttr("is_dataclass");
+        defer is_dataclass_func.deinit();
+        const result = try is_dataclass_func.call(.{self});
+        defer result.deinit();
+        return result.isTrue();
+    }
+
     /// Borrow the UTF-8 slice for a Unicode object.
     pub fn unicodeSlice(self: Object) PyError![]const u8 {
         return PyUnicode.slice(self.ptr);
@@ -161,7 +171,7 @@ pub const Object = struct {
         const tuple = try PyTuple.new(fields.len);
         defer PyObject.decRef(tuple);
         inline for (fields, 0..) |field, i| {
-            var obj: ?*c.PyObject = try toPy(field.type, @field(args, field.name));
+            var obj: ?*c.PyObject = try toPyNewRef(field.type, @field(args, field.name));
             errdefer if (obj) |o| PyObject.decRef(o);
             try PyTuple.setItem(tuple, i, obj.?);
             obj = null;
@@ -1157,6 +1167,100 @@ pub fn importModule(name: [:0]const u8) PyError!Object {
     return .owned(try PyImport.importModule(name));
 }
 
+/// Cached Python modules for performance.
+// TODO: Generalize CachedModules into a comptime-built caching mechanism.
+// Instead of manually adding fields for each module, provide an API like:
+//   `cachedImport("collections")` that auto-generates cache storage at comptime.
+// This would make any module import automatically cached without boilerplate.
+const CachedModules = struct {
+    builtins_mod: ?*c.PyObject = null,
+    typing_mod: ?*c.PyObject = null,
+    dataclasses_mod: ?*c.PyObject = null,
+    none_type_obj: ?*c.PyObject = null,
+
+    fn getBuiltins(self: *@This()) Object {
+        if (self.builtins_mod) |ptr| return .borrowed(ptr);
+        const mod = importModule("builtins") catch unreachable;
+        self.builtins_mod = mod.ptr;
+        return .borrowed(mod.ptr);
+    }
+
+    fn getTyping(self: *@This()) Object {
+        if (self.typing_mod) |ptr| return .borrowed(ptr);
+        const mod = importModule("typing") catch unreachable;
+        self.typing_mod = mod.ptr;
+        return .borrowed(mod.ptr);
+    }
+
+    fn getDataclasses(self: *@This()) Object {
+        if (self.dataclasses_mod) |ptr| return .borrowed(ptr);
+        const mod = importModule("dataclasses") catch unreachable;
+        self.dataclasses_mod = mod.ptr;
+        return .borrowed(mod.ptr);
+    }
+
+    fn getNoneType(self: *@This()) Object {
+        if (self.none_type_obj) |ptr| return .borrowed(ptr);
+        const builtins_mod = self.getBuiltins();
+        const type_func = builtins_mod.getAttr("type") catch unreachable;
+        defer type_func.deinit();
+        const result = type_func.call(.{none()}) catch unreachable;
+        self.none_type_obj = result.ptr;
+        return .borrowed(result.ptr);
+    }
+};
+
+var cached_modules: CachedModules = .{};
+
+/// Get cached builtins module (borrowed reference).
+pub fn builtins() Object {
+    return cached_modules.getBuiltins();
+}
+
+/// Get cached typing module (borrowed reference).
+pub fn typing() Object {
+    return cached_modules.getTyping();
+}
+
+/// Get cached dataclasses module (borrowed reference).
+pub fn dataclasses() Object {
+    return cached_modules.getDataclasses();
+}
+
+/// Get cached type(None) (borrowed reference).
+pub fn noneType() Object {
+    return cached_modules.getNoneType();
+}
+
+/// Check if type_obj is Optional[T] and return the inner type T (owned).
+/// Returns null if not an Optional type.
+pub fn unwrapOptional(type_obj: Object) PyError!?Object {
+    const origin = type_obj.getAttrOrNull("__origin__") catch return null;
+    if (origin == null) return null;
+    defer origin.?.deinit();
+
+    const typing_mod = typing();
+    const union_type = try typing_mod.getAttr("Union");
+    defer union_type.deinit();
+
+    if (origin.?.ptr != union_type.ptr) return null;
+
+    const args = type_obj.getAttrOrNull("__args__") catch return null;
+    if (args == null) return null;
+    defer args.?.deinit();
+
+    const tuple: Tuple = try .fromObject(args.?);
+    if (try tuple.len() != 2) return null;
+
+    const none_t = noneType();
+    const arg0 = try tuple.get(0);
+    const arg1 = try tuple.get(1);
+
+    if (arg1.ptr == none_t.ptr) return arg0.incref();
+    if (arg0.ptr == none_t.ptr) return arg1.incref();
+    return null;
+}
+
 /// Convert a Python object to a Zig value.
 pub fn fromPy(comptime T: type, obj: ?*c.PyObject) PyError!T {
     // Non-optional types require a valid object.
@@ -1197,15 +1301,11 @@ pub fn fromPy(comptime T: type, obj: ?*c.PyObject) PyError!T {
             .int => |info| switch (info.signedness) {
                 .signed => {
                     const value = try PyLong.asLongLong(ptr);
-                    return math.cast(T, value) orelse {
-                        return raise(.OverflowError, "integer out of range");
-                    };
+                    return math.castOverflow(T, value);
                 },
                 .unsigned => {
                     const value = try PyLong.asUnsignedLongLong(ptr);
-                    return math.cast(T, value) orelse {
-                        return raise(.OverflowError, "integer out of range");
-                    };
+                    return math.castOverflow(T, value);
                 },
             },
             .float => {
@@ -1266,6 +1366,28 @@ pub fn toPy(comptime T: type, value: T) PyError!*c.PyObject {
             )),
         },
     };
+}
+
+/// Convert a Zig value to a PyObject, always creating a NEW reference.
+/// This is useful when the returned reference will be stolen (e.g., tuple setItem).
+pub fn toPyNewRef(comptime T: type, value: T) PyError!*c.PyObject {
+    // For wrapper types that might transfer ownership, we need special handling.
+    switch (T) {
+        Object => {
+            // Always incref to create a new reference
+            PyObject.incRef(value.ptr);
+            return value.ptr;
+        },
+        Bytes, List, Tuple, Dict => {
+            // These wrap Object, so incref their underlying ptr
+            PyObject.incRef(value.obj.ptr);
+            return value.obj.ptr;
+        },
+        else => {
+            // For other types, toPy already creates a new reference
+            return toPy(T, value);
+        },
+    }
 }
 
 /// Borrow Python None as an Object.

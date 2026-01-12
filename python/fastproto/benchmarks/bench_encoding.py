@@ -1,10 +1,12 @@
 """Benchmarks for fastproto encoding and decoding."""
 
 import io
+from dataclasses import dataclass
 
 import pytest
 
-from fastproto import Scalar, WireType
+import fastproto
+from fastproto import Scalar, WireType, decode, encode
 
 _SCALAR_WIRE = {
     Scalar.i32: WireType.VARINT,
@@ -41,6 +43,55 @@ def _finish(writer, stream: io.BytesIO) -> bytes:
 
 
 # === Test Data ===
+
+
+def _require_native() -> None:
+    if not fastproto.__speedups__:
+        pytest.skip("dataclass serde benchmarks require the native extension")
+
+
+@dataclass
+class SimpleMessage:
+    i: int = fastproto.field(1)
+    f: float = fastproto.field(2)
+    b: bool = fastproto.field(3)
+    s: str = fastproto.field(4)
+    data: bytes = fastproto.field(5)
+
+
+@dataclass
+class Inner:
+    value: int = fastproto.field(1)
+
+
+@dataclass
+class Outer:
+    inner: Inner = fastproto.field(1)
+    name: str = fastproto.field(2)
+
+
+@pytest.fixture(scope="module")
+def simple_dataclass_message() -> SimpleMessage:
+    _require_native()
+    return SimpleMessage(i=42, f=3.14, b=True, s="hello", data=b"world")
+
+
+@pytest.fixture(scope="module")
+def simple_dataclass_bytes(simple_dataclass_message: SimpleMessage) -> bytes:
+    _require_native()
+    return encode(simple_dataclass_message)
+
+
+@pytest.fixture(scope="module")
+def nested_dataclass_message() -> Outer:
+    _require_native()
+    return Outer(inner=Inner(value=123), name="test")
+
+
+@pytest.fixture(scope="module")
+def nested_dataclass_bytes(nested_dataclass_message: Outer) -> bytes:
+    _require_native()
+    return encode(nested_dataclass_message)
 
 
 def make_simple_message(backend) -> bytes:
@@ -404,3 +455,26 @@ def test_roundtrip_simple(benchmark, backend):
 
     result = benchmark(roundtrip)
     assert result["name"] == "hello world"
+
+
+# === Dataclass Benchmarks ===
+
+
+def test_encode_dataclass_simple(benchmark, simple_dataclass_message):
+    result = benchmark(encode, simple_dataclass_message)
+    assert len(result) > 0
+
+
+def test_decode_dataclass_simple(benchmark, simple_dataclass_bytes):
+    result = benchmark(decode, SimpleMessage, simple_dataclass_bytes)
+    assert result == SimpleMessage(i=42, f=3.14, b=True, s="hello", data=b"world")
+
+
+def test_encode_dataclass_nested(benchmark, nested_dataclass_message):
+    result = benchmark(encode, nested_dataclass_message)
+    assert len(result) > 0
+
+
+def test_decode_dataclass_nested(benchmark, nested_dataclass_bytes):
+    result = benchmark(decode, Outer, nested_dataclass_bytes)
+    assert result == Outer(inner=Inner(value=123), name="test")

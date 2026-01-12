@@ -6,6 +6,7 @@ const wire = fastproto.wire;
 const py = @import("alloconda");
 
 const Reader = @import("Reader.zig");
+const wrap = @import("errors.zig").wrap;
 
 pub const Field = py.class("Field", "Represents a single field from a protobuf message.", .{
     .expect = py.method(
@@ -143,9 +144,7 @@ fn fieldLen(state: *const State) !fastproto.reader.Field.Len {
 fn fieldString(self: py.Object) !py.Object {
     const state = try Field.payloadFrom(self);
     const len_field = try fieldLen(state);
-    const data = len_field.bytesAlloc(py.allocator) catch |err| {
-        return raiseWireError(err);
-    };
+    const data = try wrap(len_field.bytesAlloc(py.allocator));
     defer py.allocator.free(data);
     return .from(data);
 }
@@ -153,9 +152,7 @@ fn fieldString(self: py.Object) !py.Object {
 fn fieldBytes(self: py.Object) !py.Bytes {
     const state = try Field.payloadFrom(self);
     const len_field = try fieldLen(state);
-    const data = len_field.bytesAlloc(py.allocator) catch |err| {
-        return raiseWireError(err);
-    };
+    const data = try wrap(len_field.bytesAlloc(py.allocator));
     defer py.allocator.free(data);
     return .fromSlice(data);
 }
@@ -171,7 +168,7 @@ fn fieldMessage(self: py.Object) !py.Object {
 fn fieldSkip(self: py.Object) !void {
     const state = try Field.payloadFrom(self);
     const len_field = try fieldLen(state);
-    len_field.skip() catch |err| return raiseWireError(err);
+    try wrap(len_field.skip());
 }
 
 fn fieldRepeated(self: py.Object, scalar_raw: i64) !py.List {
@@ -180,9 +177,7 @@ fn fieldRepeated(self: py.Object, scalar_raw: i64) !py.List {
         return py.raise(.ValueError, "invalid scalar type");
     };
     const len_field = try fieldLen(state);
-    const data = len_field.bytesAlloc(py.allocator) catch |err| {
-        return raiseWireError(err);
-    };
+    const data = try wrap(len_field.bytesAlloc(py.allocator));
     defer py.allocator.free(data);
     return switch (scalar) {
         inline else => |s| decodePackedSlice(data, s),
@@ -196,9 +191,7 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
             errdefer list.deinit();
             var offset: usize = 0;
             while (offset < slice.len) {
-                const value, const bytes_read = wire.decodeVarint(u64, slice[offset..]) catch |err| {
-                    return raiseWireError(err);
-                };
+                const value, const bytes_read = try wrap(wire.decodeVarint(u64, slice[offset..]));
                 offset += bytes_read;
                 const out = scalar.fromVarint(value);
                 try list.append(out);
@@ -236,20 +229,6 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
         },
         else => @compileError("decodePackedSlice expects a packed scalar"),
     }
-}
-
-fn raiseWireError(err: anyerror) py.PyError {
-    return py.raiseError(err, &.{
-        .{ .err = wire.Error.Truncated, .kind = .ValueError, .msg = "truncated field" },
-        .{ .err = wire.Error.VarintTooLong, .kind = .ValueError, .msg = "varint too long" },
-        .{ .err = wire.Error.InvalidWireType, .kind = .ValueError, .msg = "invalid wire type" },
-        .{ .err = wire.Error.InvalidFieldNumber, .kind = .ValueError, .msg = "invalid field number" },
-        .{ .err = wire.Error.FieldNumberTooLarge, .kind = .ValueError, .msg = "field number too large" },
-        .{ .err = wire.Error.WireTypeMismatch, .kind = .ValueError, .msg = "wire type mismatch" },
-        .{ .err = wire.Error.BufferTooSmall, .kind = .ValueError, .msg = "buffer too small" },
-        .{ .err = wire.Error.InvalidUtf8, .kind = .ValueError, .msg = "invalid utf-8" },
-        .{ .err = wire.Error.ReadFailed, .kind = .RuntimeError, .msg = "read failed" },
-    });
 }
 
 fn deinit(self: py.Object) void {

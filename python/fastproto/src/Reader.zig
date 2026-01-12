@@ -1,8 +1,8 @@
 const fastproto = @import("fastproto");
-const wire = fastproto.wire;
 const py = @import("alloconda");
 
 const Field = @import("Field.zig");
+const wrap = @import("errors.zig").wrap;
 
 const default_buffer_size = 8192;
 
@@ -58,9 +58,7 @@ fn readerNext(self: py.Object) !py.Object {
 
 fn readerNextField(self: py.Object) !?py.Object {
     const state = try Reader.payloadFrom(self);
-    const field = state.reader.next() catch |err| {
-        return raiseWireError(err);
-    };
+    const field = try wrap(state.reader.next());
     if (field) |value| {
         const obj = try Field.init(value, self);
         return obj;
@@ -71,17 +69,6 @@ fn readerNextField(self: py.Object) !?py.Object {
 fn readerRemaining(self: py.Object) !?usize {
     const state = try Reader.payloadFrom(self);
     return state.reader.remaining;
-}
-
-fn raiseWireError(err: anyerror) py.PyError {
-    return py.raiseError(err, &.{
-        .{ .err = wire.Error.Truncated, .kind = .ValueError, .msg = "truncated field" },
-        .{ .err = wire.Error.VarintTooLong, .kind = .ValueError, .msg = "varint too long" },
-        .{ .err = wire.Error.InvalidWireType, .kind = .ValueError, .msg = "invalid wire type" },
-        .{ .err = wire.Error.InvalidFieldNumber, .kind = .ValueError, .msg = "invalid field number" },
-        .{ .err = wire.Error.FieldNumberTooLarge, .kind = .ValueError, .msg = "field number too large" },
-        .{ .err = wire.Error.ReadFailed, .kind = .RuntimeError, .msg = "read failed" },
-    });
 }
 
 fn deinit(self: py.Object) void {

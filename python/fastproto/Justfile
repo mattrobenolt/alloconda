@@ -24,5 +24,9 @@ bench:
       --benchmark-sort=name --benchmark-group-by=func \
       --benchmark-columns=mean,stddev,median,ops
 
+bench-dataclass:
+    pytest -v benchmarks/bench_encoding.py -k dataclass --benchmark-only \
+      --benchmark-min-rounds=100 --benchmark-warmup=on --benchmark-disable-gc
+
 clean:
     rm -rf *.egg-info .benchmarks

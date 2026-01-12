@@ -87,6 +87,22 @@ pub fn setPythonErrorKind(comptime kind: Exception, err: anyerror) void {
     setError(kind, msg);
 }
 
+/// Create a reusable error wrapper function for a specific error mapping.
+///
+/// Example:
+///     const WIRE_ERRORS = [_]ErrorMap{ ... };
+///     const WireErrors = makeErrorWrapper(&WIRE_ERRORS);
+///
+///     // Then use naturally with try:
+///     const field = try WireErrors.wrap(reader.next());
+pub fn makeErrorWrapper(comptime mapping: []const ErrorMap) type {
+    return struct {
+        pub inline fn wrap(result: anytype) PyError!@typeInfo(@TypeOf(result)).error_union.payload {
+            return result catch |err| raiseError(err, mapping);
+        }
+    };
+}
+
 /// Get the C pointer for a Python exception type.
 pub fn exceptionPtr(comptime kind: Exception) *c.PyObject {
     return switch (kind) {

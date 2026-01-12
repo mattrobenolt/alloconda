@@ -119,6 +119,58 @@ with sock_a, sock_b:
             ...
 ```
 
+### Dataclass Encode/Decode
+
+```python
+from dataclasses import dataclass
+
+from fastproto import decode, encode, field
+
+
+@dataclass
+class Inner:
+    value: int = field(1)
+
+
+@dataclass
+class Outer:
+    inner: Inner = field(1)
+    name: str = field(2)
+
+
+msg = Outer(inner=Inner(value=123), name="test")
+encoded = encode(msg)
+decoded = decode(Outer, encoded)
+```
+
+```python
+import io
+from dataclasses import dataclass
+
+from fastproto import Reader, Writer, decode_from, encode_into, field
+
+
+@dataclass
+class SimpleMessage:
+    i: int = field(1)
+    f: float = field(2)
+    b: bool = field(3)
+    s: str = field(4)
+    data: bytes = field(5)
+
+
+msg = SimpleMessage(i=42, f=3.14, b=True, s="hello", data=b"world")
+
+stream = io.BytesIO()
+writer = Writer(stream)
+encode_into(writer, msg)
+writer.flush()
+
+stream.seek(0)
+reader = Reader(stream)
+decoded = decode_from(SimpleMessage, reader)
+```
+
 ## API Reference
 
 ### Enums
