@@ -13,6 +13,7 @@ import tomlkit
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
 from . import cli_output as out
+from .cli_helpers import resolve_zig_command
 
 DEFAULT_ALLOCONDA_URL = "git+https://github.com/mattrobenolt/alloconda?ref=main"
 FINGERPRINT_RE = re.compile(r"use this value: (0x[0-9a-fA-F]+)")
@@ -57,8 +58,12 @@ def is_url(value: str) -> bool:
     )
 
 
-def save_alloconda_dependency(url: str, dest_dir: Path) -> None:
-    cmd = ["zig", "fetch", "--save=alloconda", url]
+def save_alloconda_dependency(
+    url: str,
+    dest_dir: Path,
+    use_pypi_zig: bool = False,
+) -> None:
+    cmd = [*resolve_zig_command(use_pypi_zig), "fetch", "--save=alloconda", url]
     out.step("Fetching alloconda dependency")
     out.verbose_cmd(cmd)
     try:
@@ -67,11 +72,11 @@ def save_alloconda_dependency(url: str, dest_dir: Path) -> None:
         raise click.ClickException(f"zig fetch failed: {exc}") from exc
 
 
-def resolve_fingerprint(dest_dir: Path) -> str:
+def resolve_fingerprint(dest_dir: Path, use_pypi_zig: bool = False) -> str:
     cache_dir = dest_dir / ".zig-cache"
     had_cache = cache_dir.exists()
     result = subprocess.run(
-        ["zig", "build"],
+        [*resolve_zig_command(use_pypi_zig), "build"],
         cwd=dest_dir,
         capture_output=True,
         text=True,
