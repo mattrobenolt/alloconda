@@ -190,12 +190,18 @@ def ensure_package_dir(dest_dir: Path, package_name: str) -> Path:
     help="Path or git+https URL to alloconda source for build.zig.zon",
 )
 @click.option("--force", is_flag=True, help="Overwrite existing files")
+@click.option(
+    "--use-pypi-zig",
+    is_flag=True,
+    help="Use ziglang PyPI package instead of system zig",
+)
 def init(
     project_name: str | None,
     module_name: str | None,
     dest_dir: Path,
     alloconda_path: str,
     force: bool,
+    use_pypi_zig: bool,
 ) -> None:
     """Scaffold build.zig and a minimal root module."""
     dest_dir = dest_dir.resolve()
@@ -239,12 +245,12 @@ def init(
     write_file(dest_dir / "src" / "root.zig", root_zig, force)
     ensure_package_dir(dest_dir, package_name)
 
-    fingerprint = resolve_fingerprint(dest_dir)
+    fingerprint = resolve_fingerprint(dest_dir, use_pypi_zig)
     if fingerprint:
         update_fingerprint(dest_dir / "build.zig.zon", fingerprint)
 
     if needs_fetch:
-        save_alloconda_dependency(alloconda_path, dest_dir)
+        save_alloconda_dependency(alloconda_path, dest_dir, use_pypi_zig)
 
     pyproject_path = dest_dir / "pyproject.toml"
     updated_pyproject = False

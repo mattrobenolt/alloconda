@@ -64,6 +64,7 @@ def build_wheel(
         include=config_list(settings, "include"),
         exclude=config_list(settings, "exclude"),
         fetch=_bool_setting(settings, "fetch", True),
+        use_pypi_zig=_bool_setting(settings, "use-pypi-zig", False),
     )
     return wheel_path.name
 
@@ -94,6 +95,7 @@ def build_editable(
         force_init=_bool_setting(settings, "force-init", False),
         skip_build=_bool_setting(settings, "skip-build", False),
         workdir=project_dir,
+        use_pypi_zig=_bool_setting(settings, "use-pypi-zig", False),
     )
 
     metadata = read_project_metadata(project_dir, package_dir)

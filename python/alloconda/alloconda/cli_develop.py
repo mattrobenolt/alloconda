@@ -57,6 +57,11 @@ from .cli_helpers import (
     help="Extra argument to pass to pip (repeatable)",
 )
 @click.option("--uv", "use_uv", is_flag=True, help="Use uv pip for editable install")
+@click.option(
+    "--use-pypi-zig",
+    is_flag=True,
+    help="Use ziglang PyPI package instead of system zig",
+)
 def develop(
     release: bool,
     debug: bool,
@@ -73,6 +78,7 @@ def develop(
     project_dir: Path | None,
     pip_args: tuple[str, ...],
     use_uv: bool,
+    use_pypi_zig: bool,
 ) -> None:
     """Build and install the project in editable mode."""
     project_root = project_dir or find_project_dir(Path.cwd()) or Path.cwd()
@@ -88,6 +94,7 @@ def develop(
     skip_build = skip_build or config_bool(config, "skip-build")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
+    use_pypi_zig = use_pypi_zig or config_bool(config, "use-pypi-zig")
     release_flag = release
     debug_flag = debug
     release = resolve_release_mode(
@@ -138,6 +145,7 @@ def develop(
     _add_config_setting(cmd, "no-init", no_init)
     _add_config_setting(cmd, "force-init", force_init)
     _add_config_setting(cmd, "project-dir", str(project_root))
+    _add_config_setting(cmd, "use-pypi-zig", use_pypi_zig)
 
     for arg in pip_args:
         cmd.append(arg)

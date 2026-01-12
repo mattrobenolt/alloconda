@@ -602,6 +602,7 @@ def build_extension(
     force_init: bool,
     skip_build: bool = False,
     workdir: Path | None = None,
+    use_pypi_zig: bool = False,
 ) -> Path:
     build_root = workdir or Path.cwd()
 
@@ -626,6 +627,7 @@ def build_extension(
                 build_step=build_step,
                 optimize=optimize,
                 workdir=build_root,
+                use_pypi_zig=use_pypi_zig,
             )
         else:
             out.verbose("Skipping build (--skip-build)")
