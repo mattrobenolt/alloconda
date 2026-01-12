@@ -129,7 +129,8 @@ def update_pyproject(pyproject_path: Path, package_dir: str) -> bool:
 
     if "build-system" not in doc:
         build_system = tomlkit.table()
-        build_system.add("requires", ["alloconda"])
+        requires = "alloconda[zig]" if not shutil.which("zig") else "alloconda"
+        build_system.add("requires", [requires])
         build_system.add("build-backend", "alloconda.build_backend")
         doc["build-system"] = build_system
         updated = True

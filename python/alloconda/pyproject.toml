@@ -32,6 +32,9 @@ dependencies = [
     "tomlkit>=0.13.3",
 ]
 
+[project.optional-dependencies]
+zig = ["ziglang~=0.15.0"]
+
 [project.urls]
 Homepage = "https://github.com/mattrobenolt/alloconda"
 Repository = "https://github.com/mattrobenolt/alloconda"
