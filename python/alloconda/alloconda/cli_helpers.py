@@ -37,8 +37,7 @@ def resolve_zig_command(use_pypi_zig: bool = False) -> list[str]:
 
     if importlib.util.find_spec("ziglang") is None:
         raise click.ClickException(
-            "The ziglang package is not installed. "
-            "Install it with: pip install ziglang"
+            "The ziglang package is not installed. Install it with: pip install ziglang"
         )
     return [sys.executable, "-m", "ziglang"]
 
