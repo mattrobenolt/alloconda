@@ -28,20 +28,6 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-packages --all-groups
 
-      - name: Debug Python paths
-        run: |
-          echo "=== System python3-config ==="
-          which python3-config || echo "not found"
-          python3-config --includes 2>/dev/null || echo "failed"
-          echo ""
-          echo "=== uv Python sysconfig ==="
-          uv run python -c "import sysconfig; print('include:', sysconfig.get_path('include'))"
-          uv run python -c "import sys; print('version:', sys.version)"
-          echo ""
-          echo "=== Check if _PyObject_VisitManagedDict exists in headers ==="
-          uv run python -c "import sysconfig; p = sysconfig.get_path('include'); print(p)" | xargs -I{} grep -l "_PyObject_VisitManagedDict" {}/cpython/object.h || echo "not found in uv headers"
-          grep -l "_PyObject_VisitManagedDict" /usr/include/python*/cpython/object.h 2>/dev/null || echo "not found in system headers"
-
       - name: Build allotest with system zig
         run: |
           cd python/allotest

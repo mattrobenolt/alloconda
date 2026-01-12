@@ -146,6 +146,26 @@ def should_include_path(
     return True
 
 
+def resolve_python_include(python_include: str | None, zig_target: str | None) -> str | None:
+    """Resolve Python include path, auto-detecting from running interpreter if needed.
+
+    For native builds (no zig_target), we auto-detect from sysconfig to ensure
+    the correct Python headers are used when running under uv or similar tools.
+    """
+    if python_include:
+        return python_include
+
+    if zig_target:
+        return None
+
+    include_path = sysconfig.get_path("include")
+    if include_path:
+        out.verbose(f"Auto-detected Python include: {include_path}")
+        return include_path
+
+    return None
+
+
 def run_zig_build(
     release: bool,
     zig_target: str | None,
@@ -164,11 +184,13 @@ def run_zig_build(
         cmd.append("-Doptimize=ReleaseFast")
     if zig_target:
         cmd.append(f"-Dtarget={zig_target}")
+
+    resolved_include = resolve_python_include(python_include, zig_target)
     env = None
-    if python_include:
-        cmd.append(f"-Dpython-include={python_include}")
+    if resolved_include:
+        cmd.append(f"-Dpython-include={resolved_include}")
         env = os.environ.copy()
-        env["ALLOCONDA_PYTHON_INCLUDE"] = python_include
+        env["ALLOCONDA_PYTHON_INCLUDE"] = resolved_include
 
     out.step("Compiling extension")
     out.verbose_cmd(cmd)
