@@ -130,8 +130,9 @@ def run_zig_build(
     build_step: str | None = None,
     optimize: str | None = None,
     workdir: Path | None = None,
+    use_pypi_zig: bool = False,
 ) -> None:
-    cmd = ["zig", "build"]
+    cmd = [*resolve_zig_command(use_pypi_zig), "build"]
     if build_step:
         cmd.append(build_step)
     if optimize:
