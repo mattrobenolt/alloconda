@@ -1,10 +1,12 @@
 import fnmatch
 import importlib.machinery
+import importlib.util
 import os
 import platform
 import re
 import shutil
 import subprocess
+import sys
 import sysconfig
 import tomllib
 from dataclasses import dataclass
@@ -16,6 +18,29 @@ import click
 from . import cli_output as out
 
 OPTIMIZE_CHOICES = ("ReleaseSafe", "ReleaseFast", "ReleaseSmall")
+
+
+def resolve_zig_command(use_pypi_zig: bool = False) -> list[str]:
+    """Resolve the zig command prefix based on configuration.
+
+    Args:
+        use_pypi_zig: If True, use the ziglang PyPI package instead of system zig.
+
+    Returns:
+        Command prefix list, e.g. ["zig"] or [sys.executable, "-m", "ziglang"].
+
+    Raises:
+        click.ClickException: If ziglang package is requested but not installed.
+    """
+    if not use_pypi_zig:
+        return ["zig"]
+
+    if importlib.util.find_spec("ziglang") is None:
+        raise click.ClickException(
+            "The ziglang package is not installed. "
+            "Install it with: pip install ziglang"
+        )
+    return [sys.executable, "-m", "ziglang"]
 
 
 @dataclass(frozen=True)
