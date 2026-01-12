@@ -43,7 +43,7 @@
             just
             zigpkgs."0.15.2"
             zls_0_15
-            zlint-unstable
+            zlint
             fd
             pkg-config
             python314
