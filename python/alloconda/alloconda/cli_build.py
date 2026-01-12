@@ -41,6 +41,11 @@ from .cli_helpers import (
 @click.option("--python-include", help="Python include path for cross builds")
 @click.option("--no-init", is_flag=True, help="Skip __init__.py generation")
 @click.option("--force-init", is_flag=True, help="Overwrite existing __init__.py")
+@click.option(
+    "--use-pypi-zig",
+    is_flag=True,
+    help="Use ziglang PyPI package instead of system zig",
+)
 def build(
     release: bool,
     debug: bool,
@@ -53,6 +58,7 @@ def build(
     python_include: str | None,
     no_init: bool,
     force_init: bool,
+    use_pypi_zig: bool,
 ) -> None:
     """Build a Zig extension and install it into a package directory."""
     out.verbose("Starting build command")
@@ -71,6 +77,7 @@ def build(
     build_step = config_value(config, "build-step")
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
+    use_pypi_zig = use_pypi_zig or config_bool(config, "use-pypi-zig")
     release = resolve_release_mode(
         release_flag=release,
         debug_flag=debug,
@@ -96,6 +103,7 @@ def build(
         no_init=no_init,
         force_init=force_init,
         workdir=build_root,
+        use_pypi_zig=use_pypi_zig,
     )
     out.success(f"Built extension: {out.path_style(dst.name)}")
     if out.is_verbose():

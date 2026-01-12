@@ -67,6 +67,11 @@ from .wheel_builder import build_wheel
     default=True,
     help="Fetch missing headers automatically",
 )
+@click.option(
+    "--use-pypi-zig",
+    is_flag=True,
+    help="Use ziglang PyPI package instead of system zig",
+)
 def wheel(
     release: bool,
     debug: bool,
@@ -91,6 +96,7 @@ def wheel(
     no_init: bool,
     force_init: bool,
     fetch: bool,
+    use_pypi_zig: bool,
 ) -> None:
     """Build a single wheel for the current project."""
     out.verbose("Starting wheel build")
@@ -118,6 +124,7 @@ def wheel(
     no_init = no_init or config_bool(config, "no-init")
     force_init = force_init or config_bool(config, "force-init")
     skip_build = skip_build or config_bool(config, "skip-build")
+    use_pypi_zig = use_pypi_zig or config_bool(config, "use-pypi-zig")
     release = resolve_release_mode(
         release_flag=release,
         debug_flag=debug,
@@ -158,6 +165,7 @@ def wheel(
         include=include,
         exclude=exclude,
         fetch=fetch,
+        use_pypi_zig=use_pypi_zig,
     )
     out.success(f"Built wheel: {out.path_style(wheel_path.name)}")
     if out.is_verbose():

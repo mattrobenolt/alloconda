@@ -75,6 +75,7 @@ def build_wheel(
     include: list[str] | None,
     exclude: list[str] | None,
     fetch: bool = True,
+    use_pypi_zig: bool = False,
 ) -> Path:
     python_include = None
     if python_version:
@@ -109,6 +110,7 @@ def build_wheel(
             build_step=build_step,
             optimize=optimize,
             workdir=build_root,
+            use_pypi_zig=use_pypi_zig,
         )
 
     metadata = read_project_metadata(project_dir, package_dir)
