@@ -23,23 +23,37 @@ OPTIMIZE_CHOICES = ("ReleaseSafe", "ReleaseFast", "ReleaseSmall")
 def resolve_zig_command(use_pypi_zig: bool = False) -> list[str]:
     """Resolve the zig command prefix based on configuration.
 
+    Resolution order:
+    1. If use_pypi_zig=True, use ziglang PyPI package (error if not installed)
+    2. If system zig is available (shutil.which), use it
+    3. If ziglang PyPI package is importable, use it as fallback
+    4. Otherwise, raise an error with installation instructions
+
     Args:
-        use_pypi_zig: If True, use the ziglang PyPI package instead of system zig.
+        use_pypi_zig: If True, force use of the ziglang PyPI package.
 
     Returns:
         Command prefix list, e.g. ["zig"] or [sys.executable, "-m", "ziglang"].
 
     Raises:
-        click.ClickException: If ziglang package is requested but not installed.
+        click.ClickException: If no zig installation is available.
     """
-    if not use_pypi_zig:
+    if use_pypi_zig:
+        if importlib.util.find_spec("ziglang") is None:
+            raise click.ClickException(
+                "The ziglang package is not installed. Install it with: pip install ziglang"
+            )
+        return [sys.executable, "-m", "ziglang"]
+
+    if shutil.which("zig"):
         return ["zig"]
 
-    if importlib.util.find_spec("ziglang") is None:
-        raise click.ClickException(
-            "The ziglang package is not installed. Install it with: pip install ziglang"
-        )
-    return [sys.executable, "-m", "ziglang"]
+    if importlib.util.find_spec("ziglang") is not None:
+        return [sys.executable, "-m", "ziglang"]
+
+    raise click.ClickException(
+        "No zig installation found. Either install zig system-wide or run: pip install ziglang"
+    )
 
 
 @dataclass(frozen=True)
