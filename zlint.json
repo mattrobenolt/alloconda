@@ -9,7 +9,6 @@
     "line-length": ["error", { "max_length": 120 }],
     "must-return-ref": "error",
     "no-catch-return": "error",
-    "no-print": "allow",
     "no-return-try": "error",
     "no-unresolved": "error",
     "returned-stack-reference": "error",

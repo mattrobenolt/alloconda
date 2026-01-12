@@ -58,7 +58,7 @@ fn to_python(input: py.Object) !py.Object {
 }
 
 fn load(fp: py.Object) !py.Object {
-    const data = try fp.callMethod0("read");
+    const data = try fp.callMethod("read", .{});
     defer data.deinit();
     return loads(data);
 }
@@ -68,7 +68,7 @@ fn dumps(value: py.Object) !py.Object {
     defer arena.deinit();
     const allocator = arena.allocator();
     const text = try renderZon(allocator, value.ptr);
-    return .from([]const u8, text);
+    return .from(text);
 }
 
 fn from_python(value: py.Object) !py.Object {
@@ -80,7 +80,7 @@ fn dump(value: py.Object, fp: py.Object) !void {
     defer arena.deinit();
     const allocator = arena.allocator();
     const text = try renderZon(allocator, value.ptr);
-    const result = try fp.callMethod1("write", []const u8, text);
+    const result = try fp.callMethod("write", .{text});
     result.deinit();
 }
 
@@ -88,7 +88,7 @@ fn docSetText(self: py.Object, text: py.Object) !void {
     if (!text.isUnicode() and !text.isBytes()) {
         return py.raise(.TypeError, "text must be str or bytes");
     }
-    try self.setAttr("text", py.Object, text);
+    try self.setAttr("text", text);
 }
 
 fn docGetText(self: py.Object) !py.Object {
@@ -102,7 +102,7 @@ fn docLoads(self: py.Object) !py.Object {
 }
 
 fn docSetValue(self: py.Object, value: py.Object) !void {
-    try self.setAttr("value", py.Object, value);
+    try self.setAttr("value", value);
 }
 
 fn docDumps(self: py.Object) !py.Object {
@@ -170,17 +170,17 @@ fn renderZon(gpa: Allocator, obj: *PyObject) ![]const u8 {
 
 fn zoirToPy(gpa: Allocator, zoir: Zoir, node: Zoir.Node.Index) anyerror!py.Object {
     return switch (node.get(zoir)) {
-        .true => try .from(bool, true),
-        .false => try .from(bool, false),
+        .true => try .from(true),
+        .false => try .from(false),
         .null => py.none(),
-        .pos_inf => try .from(f64, math.inf(f64)),
-        .neg_inf => try .from(f64, -math.inf(f64)),
-        .nan => try .from(f64, math.nan(f64)),
+        .pos_inf => try .from(math.inf(f64)),
+        .neg_inf => try .from(-math.inf(f64)),
+        .nan => try .from(math.nan(f64)),
         .int_literal => |lit| intLiteralToPy(gpa, lit),
-        .float_literal => |value| try .from(f64, @floatCast(value)),
+        .float_literal => |value| try .from(@as(f64, @floatCast(value))),
         .char_literal => |value| charLiteralToPy(value),
-        .enum_literal => |value| try .from(@TypeOf(value.get(zoir)), value.get(zoir)),
-        .string_literal => |value| try .from([]const u8, value),
+        .enum_literal => |value| try .from(value.get(zoir)),
+        .string_literal => |value| try .from(value),
         .empty_literal => {
             const dict: py.Dict = try .init();
             return dict.obj;
@@ -192,7 +192,7 @@ fn zoirToPy(gpa: Allocator, zoir: Zoir, node: Zoir.Node.Index) anyerror!py.Objec
 
 fn intLiteralToPy(gpa: Allocator, lit: anytype) anyerror!py.Object {
     switch (lit) {
-        .small => |value| return .from(i64, @intCast(value)),
+        .small => |value| return .from(@as(i64, @intCast(value))),
         .big => |value| {
             const text = try value.toStringAlloc(gpa, 10, .lower);
             const ztext = try copyWithSentinel(gpa, text);
@@ -206,7 +206,7 @@ fn charLiteralToPy(value: u21) anyerror!py.Object {
     const len = std.unicode.utf8Encode(value, &buf) catch {
         return py.raise(.ValueError, "invalid char literal");
     };
-    return .from([]const u8, @as([]const u8, buf[0..len]));
+    return .from(@as([]const u8, buf[0..len]));
 }
 
 fn arrayToPy(gpa: Allocator, zoir: Zoir, range: Zoir.Node.Index.Range) anyerror!py.Object {
@@ -215,7 +215,7 @@ fn arrayToPy(gpa: Allocator, zoir: Zoir, range: Zoir.Node.Index.Range) anyerror!
     var i: u32 = 0;
     while (i < range.len) : (i += 1) {
         const item = try zoirToPy(gpa, zoir, range.at(i));
-        try list.set(py.Object, @intCast(i), item);
+        try list.set(@intCast(i), item);
     }
     return list.obj;
 }
@@ -227,7 +227,7 @@ fn structToPy(gpa: Allocator, zoir: Zoir, fields: anytype) anyerror!py.Object {
     while (i < fields.names.len) : (i += 1) {
         const name = fields.names[i].get(zoir);
         const value = try zoirToPy(gpa, zoir, fields.vals.at(@intCast(i)));
-        try dict.setItem([]const u8, name, py.Object, value);
+        try dict.setItem(name, value);
     }
     return dict.obj;
 }

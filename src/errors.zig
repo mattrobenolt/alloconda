@@ -15,6 +15,8 @@ pub const Exception = enum {
     IndexError,
     KeyError,
     StopIteration,
+    OSError,
+    PermissionError,
 };
 
 pub const PyError = error{ PythonError, OutOfMemory };
@@ -62,11 +64,17 @@ pub fn raiseError(err: anyerror, comptime mapping: []const ErrorMap) PyError {
     return error.PythonError;
 }
 
-/// Set a Python RuntimeError from a Zig error if no exception is pending.
+/// Set a Python exception from a Zig error if no exception is pending.
+/// Common Zig errors are automatically mapped to appropriate Python exceptions.
 pub fn setPythonError(err: anyerror) void {
     if (errorOccurred()) return;
     switch (err) {
         error.OutOfMemory => setError(.MemoryError, "out of memory"),
+        error.InvalidCharacter, error.InvalidValue => setPythonErrorKind(.ValueError, err),
+        error.Overflow => setPythonErrorKind(.OverflowError, err),
+        error.DivisionByZero => setPythonErrorKind(.ZeroDivisionError, err),
+        error.EndOfStream, error.FileNotFound => setPythonErrorKind(.OSError, err),
+        error.AccessDenied => setPythonErrorKind(.PermissionError, err),
         else => setPythonErrorKind(.RuntimeError, err),
     }
 }
@@ -92,5 +100,7 @@ pub fn exceptionPtr(comptime kind: Exception) *c.PyObject {
         .IndexError => c.PyExc_IndexError,
         .KeyError => c.PyExc_KeyError,
         .StopIteration => c.PyExc_StopIteration,
+        .OSError => c.PyExc_OSError,
+        .PermissionError => c.PyExc_PermissionError,
     };
 }

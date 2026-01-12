@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    zig = {
+      url = "github:mitchellh/zig-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     mattware = {
       url = "github:mattrobenolt/nixpkgs";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -14,6 +18,7 @@
     {
       nixpkgs,
       flake-utils,
+      zig,
       mattware,
       ...
     }:
@@ -22,10 +27,13 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ mattware.overlays.default ];
+          overlays = [
+            zig.overlays.default
+            mattware.overlays.default
+          ];
         };
         wrangler = pkgs.writeShellScriptBin "wrangler" ''
-          exec ${pkgs.bun}/bin/bunx --bun wrangler@4.56.0 "$@"
+          exec ${pkgs.bun}/bin/bunx --bun wrangler@4.58.0 "$@"
         '';
       in
       {
@@ -33,7 +41,7 @@
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc ];
           packages = with pkgs; [
             just
-            zig_0_15
+            zigpkgs."0.15.2"
             zls_0_15
             zlint-unstable
             fd

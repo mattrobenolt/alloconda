@@ -4,6 +4,7 @@ const math = std.math;
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const Io = std.Io;
+const builtin = @import("builtin");
 
 const errors = @import("errors.zig");
 const raise = errors.raise;
@@ -42,6 +43,10 @@ pub const Object = struct {
 
     /// Release the reference if owned.
     pub fn deinit(self: Object) void {
+        if (builtin.mode == .Debug and !self.owns_ref) {
+            // Catch calling deinit on borrowed references - this is always a bug
+            @panic("deinit() called on borrowed Object - this is a bug");
+        }
         if (self.owns_ref) PyObject.decRef(self.ptr);
     }
 
@@ -57,8 +62,8 @@ pub const Object = struct {
     }
 
     /// Convert a Zig value into a new Python object.
-    pub fn from(comptime T: type, value: T) PyError!Object {
-        const obj = try toPy(T, value);
+    pub fn from(value: anytype) PyError!Object {
+        const obj = try toPy(@TypeOf(value), value);
         return .owned(obj);
     }
 
@@ -142,42 +147,25 @@ pub const Object = struct {
         return .owned(try PyObject.str(self.ptr));
     }
 
-    /// Call with no arguments.
-    pub fn call0(self: Object) PyError!Object {
-        return .owned(try PyObject.callNoArgs(self.ptr));
-    }
-
-    /// Call with one argument.
-    pub fn call1(self: Object, comptime T: type, arg: T) PyError!Object {
-        var arg_obj: ?*c.PyObject = try toPy(T, arg);
-        errdefer if (arg_obj) |obj| PyObject.decRef(obj);
-
-        const tuple = try PyTuple.new(1);
+    /// Call with arguments from a Zig tuple (use .{} for no arguments).
+    pub fn call(self: Object, args: anytype) PyError!Object {
+        const Args = @TypeOf(args);
+        const info = @typeInfo(Args);
+        if (info != .@"struct" or !info.@"struct".is_tuple) {
+            @compileError("call() expects a tuple of arguments");
+        }
+        const fields = info.@"struct".fields;
+        if (fields.len == 0) {
+            return .owned(try PyObject.callNoArgs(self.ptr));
+        }
+        const tuple = try PyTuple.new(fields.len);
         defer PyObject.decRef(tuple);
-
-        try PyTuple.setItem(tuple, 0, arg_obj.?);
-        arg_obj = null;
-
-        return .owned(try PyObject.callObject(self.ptr, tuple));
-    }
-
-    /// Call with two arguments.
-    pub fn call2(self: Object, comptime T0: type, arg0: T0, comptime T1: type, arg1: T1) PyError!Object {
-        var arg0_obj: ?*c.PyObject = try toPy(T0, arg0);
-        errdefer if (arg0_obj) |obj| PyObject.decRef(obj);
-
-        var arg1_obj: ?*c.PyObject = try toPy(T1, arg1);
-        errdefer if (arg1_obj) |obj| PyObject.decRef(obj);
-
-        const tuple = try PyTuple.new(2);
-        defer PyObject.decRef(tuple);
-
-        try PyTuple.setItem(tuple, 0, arg0_obj.?);
-        arg0_obj = null;
-
-        try PyTuple.setItem(tuple, 1, arg1_obj.?);
-        arg1_obj = null;
-
+        inline for (fields, 0..) |field, i| {
+            var obj: ?*c.PyObject = try toPy(field.type, @field(args, field.name));
+            errdefer if (obj) |o| PyObject.decRef(o);
+            try PyTuple.setItem(tuple, i, obj.?);
+            obj = null;
+        }
         return .owned(try PyObject.callObject(self.ptr, tuple));
     }
 
@@ -206,8 +194,8 @@ pub const Object = struct {
     }
 
     /// Set an attribute by name.
-    pub fn setAttr(self: Object, name: [:0]const u8, comptime T: type, value: T) PyError!void {
-        const value_obj = try toPy(T, value);
+    pub fn setAttr(self: Object, name: [:0]const u8, value: anytype) PyError!void {
+        const value_obj = try toPy(@TypeOf(value), value);
         defer PyObject.decRef(value_obj);
         try PyObject.setAttrString(self.ptr, name, value_obj);
     }
@@ -228,32 +216,11 @@ pub const Object = struct {
         try self.genericSetAttr(name, null);
     }
 
-    /// Call a method with no arguments.
-    pub fn callMethod0(self: Object, name: [:0]const u8) PyError!Object {
+    /// Call a method with arguments from a Zig tuple (use .{} for no arguments).
+    pub fn callMethod(self: Object, name: [:0]const u8, args: anytype) PyError!Object {
         const meth = try self.getAttr(name);
         defer meth.deinit();
-        return meth.call0();
-    }
-
-    /// Call a method with one argument.
-    pub fn callMethod1(self: Object, name: [:0]const u8, comptime T: type, arg: T) PyError!Object {
-        const meth = try self.getAttr(name);
-        defer meth.deinit();
-        return meth.call1(T, arg);
-    }
-
-    /// Call a method with two arguments.
-    pub fn callMethod2(
-        self: Object,
-        name: [:0]const u8,
-        comptime T0: type,
-        arg0: T0,
-        comptime T1: type,
-        arg1: T1,
-    ) PyError!Object {
-        const meth = try self.getAttr(name);
-        defer meth.deinit();
-        return meth.call2(T0, arg0, T1, arg1);
+        return meth.call(args);
     }
 };
 
@@ -482,7 +449,7 @@ pub const IoReader = struct {
 
         const memview = PyMemoryView.fromMemory(dest.ptr, dest.len, c.PyBUF_WRITE) catch return error.ReadFailed;
 
-        const result = self.obj.callMethod1("readinto", *c.PyObject, memview) catch return error.ReadFailed;
+        const result = self.obj.callMethod("readinto", .{memview}) catch return error.ReadFailed;
         defer result.deinit();
 
         const n_signed = result.as(i64) catch return error.ReadFailed;
@@ -583,7 +550,7 @@ pub const IoWriter = struct {
         const ptr: [*]u8 = @ptrCast(@constCast(bytes.ptr));
         const memview = PyMemoryView.fromMemory(ptr, bytes.len, c.PyBUF_READ) catch return error.WriteFailed;
 
-        const result = self.obj.callMethod1("write", *c.PyObject, memview) catch return error.WriteFailed;
+        const result = self.obj.callMethod("write", .{memview}) catch return error.WriteFailed;
         defer result.deinit();
 
         const n_signed = result.as(i64) catch return error.WriteFailed;
@@ -801,7 +768,23 @@ pub const List = struct {
     pub fn fromSlice(comptime T: type, values: []const T) PyError!List {
         var list: List = try .init(values.len);
         errdefer list.deinit();
-        for (values, 0..) |v, i| try list.set(T, i, v);
+        for (values, 0..) |v, i| try list.set(i, v);
+        return list;
+    }
+
+    /// Create a new list from a Zig tuple literal.
+    pub fn from(values: anytype) PyError!List {
+        const T = @TypeOf(values);
+        const info = @typeInfo(T);
+        if (info != .@"struct" or !info.@"struct".is_tuple) {
+            @compileError("List.from() expects a tuple literal");
+        }
+        const fields = info.@"struct".fields;
+        var list: List = try .init(fields.len);
+        errdefer list.deinit();
+        inline for (fields, 0..) |field, i| {
+            try list.set(i, @field(values, field.name));
+        }
         return list;
     }
 
@@ -822,15 +805,15 @@ pub const List = struct {
     }
 
     /// Set the item at the given index; transfers ownership of the new reference.
-    pub fn set(self: List, comptime T: type, index: usize, value: T) PyError!void {
-        const value_obj = try toPy(T, value);
+    pub fn set(self: List, index: usize, value: anytype) PyError!void {
+        const value_obj = try toPy(@TypeOf(value), value);
         errdefer PyObject.decRef(value_obj);
         try PyList.setItem(self.obj.ptr, index, value_obj);
     }
 
     /// Append an item to the list.
-    pub fn append(self: List, comptime T: type, value: T) PyError!void {
-        const value_obj = try toPy(T, value);
+    pub fn append(self: List, value: anytype) PyError!void {
+        const value_obj = try toPy(@TypeOf(value), value);
         defer PyObject.decRef(value_obj);
         try PyList.append(self.obj.ptr, value_obj);
     }
@@ -894,7 +877,7 @@ pub const Dict = struct {
         var dict: Dict = try .init();
         errdefer dict.deinit();
         for (entries) |entry| {
-            try dict.setItem(K, entry.key, V, entry.value);
+            try dict.setItem(entry.key, entry.value);
         }
         return dict;
     }
@@ -910,8 +893,8 @@ pub const Dict = struct {
     }
 
     /// Borrow a value by key.
-    pub fn getItem(self: Dict, comptime K: type, key: K) PyError!?Object {
-        const key_obj = try toPy(K, key);
+    pub fn getItem(self: Dict, key: anytype) PyError!?Object {
+        const key_obj = try toPy(@TypeOf(key), key);
         defer PyObject.decRef(key_obj);
         const item = try PyDict.getItemWithError(self.obj.ptr, key_obj);
         if (item == null) return null;
@@ -919,10 +902,10 @@ pub const Dict = struct {
     }
 
     /// Set a key to a value.
-    pub fn setItem(self: Dict, comptime K: type, key: K, comptime V: type, value: V) PyError!void {
-        const key_obj = try toPy(K, key);
+    pub fn setItem(self: Dict, key: anytype, value: anytype) PyError!void {
+        const key_obj = try toPy(@TypeOf(key), key);
         defer PyObject.decRef(key_obj);
-        const value_obj = try toPy(V, value);
+        const value_obj = try toPy(@TypeOf(value), value);
         defer PyObject.decRef(value_obj);
         try PyDict.setItem(self.obj.ptr, key_obj, value_obj);
     }
@@ -1042,6 +1025,25 @@ pub const Tuple = struct {
         return .owned(tuple_obj);
     }
 
+    /// Create a new tuple from a Zig tuple literal.
+    pub fn from(values: anytype) PyError!Tuple {
+        const T = @TypeOf(values);
+        const info = @typeInfo(T);
+        if (info != .@"struct" or !info.@"struct".is_tuple) {
+            @compileError("Tuple.from() expects a tuple literal");
+        }
+        const fields = info.@"struct".fields;
+        const tuple_obj = try PyTuple.new(fields.len);
+        errdefer PyObject.decRef(tuple_obj);
+        inline for (fields, 0..) |field, i| {
+            var item_obj: ?*c.PyObject = try toPy(field.type, @field(values, field.name));
+            errdefer if (item_obj) |obj| PyObject.decRef(obj);
+            try PyTuple.setItem(tuple_obj, i, item_obj.?);
+            item_obj = null;
+        }
+        return .owned(tuple_obj);
+    }
+
     /// Release the reference if owned.
     pub fn deinit(self: Tuple) void {
         self.obj.deinit();
@@ -1059,8 +1061,8 @@ pub const Tuple = struct {
     }
 
     /// Set the item at the given index; transfers ownership of the new reference.
-    pub fn set(self: Tuple, comptime T: type, index: usize, value: T) PyError!void {
-        const value_obj = try toPy(T, value);
+    pub fn set(self: Tuple, index: usize, value: anytype) PyError!void {
+        const value_obj = try toPy(@TypeOf(value), value);
         errdefer PyObject.decRef(value_obj);
         try PyTuple.setItem(self.obj.ptr, index, value_obj);
     }
@@ -1233,23 +1235,31 @@ pub fn toPy(comptime T: type, value: T) PyError!*c.PyObject {
         // Raw PyObject pointers pass through.
         *c.PyObject => value,
         // Wrapper types - transfer or share ownership appropriately.
-        Object => value.toPyObject(),
-        Bytes => value.toPyObject(),
-        Long => value.toPyObject(),
-        List => value.toPyObject(),
-        Tuple => value.toPyObject(),
-        Dict => value.toPyObject(),
+        Object, Bytes, Long, List, Tuple, Dict => value.toPyObject(),
         // String slices.
-        []const u8, [:0]const u8 => PyUnicode.fromSlice(value),
+        []const u8, [:0]const u8, []u8, [:0]u8 => PyUnicode.fromSlice(value),
         // Boolean.
         bool => PyBool.fromBool(value),
-        // Numeric types fall through to typeInfo-based handling.
+        // Numeric types and pointer-to-array types fall through to typeInfo.
         else => switch (@typeInfo(T)) {
             .int => |info| switch (info.signedness) {
                 .signed => PyLong.fromLongLong(@intCast(value)),
                 .unsigned => PyLong.fromUnsignedLongLong(@intCast(value)),
             },
             .float => PyFloat.fromDouble(@floatCast(value)),
+            // Pointer to array (e.g., *const [N:0]u8 for string literals)
+            .pointer => |ptr| {
+                if (ptr.size == .one) {
+                    const child = @typeInfo(ptr.child);
+                    if (child == .array and child.array.child == u8) {
+                        return PyUnicode.fromSlice(value);
+                    }
+                }
+                @compileError(fmt.comptimePrint(
+                    "unsupported pointer type: {s}",
+                    .{@typeName(T)},
+                ));
+            },
             else => @compileError(fmt.comptimePrint(
                 "unsupported return type: {s}",
                 .{@typeName(T)},

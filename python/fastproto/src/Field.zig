@@ -60,8 +60,8 @@ pub fn init(field: fastproto.Field, owner: py.Object) !py.Object {
 
     const number = field.fieldNumber();
     const wire_type = fieldWireType(field);
-    try obj.setAttr("number", u32, number);
-    try obj.setAttr("wire_type", u8, @intFromEnum(wire_type));
+    try obj.setAttr("number", number);
+    try obj.setAttr("wire_type", @intFromEnum(wire_type));
     return obj;
 }
 
@@ -111,7 +111,7 @@ fn fieldAsScalar(self: py.Object, scalar_raw: i64) !py.Object {
                 .varint => |f| s.fromVarint(f.value),
                 else => unreachable,
             };
-            break :blk py.Object.from(@TypeOf(value), value);
+            break :blk .from(value);
         },
         inline .fixed32, .sfixed32, .float => |s| blk: {
             try state.require(.fixed32);
@@ -119,7 +119,7 @@ fn fieldAsScalar(self: py.Object, scalar_raw: i64) !py.Object {
                 .fixed32 => |f| s.fromFixedBits(f.value),
                 else => unreachable,
             };
-            break :blk py.Object.from(@TypeOf(value), value);
+            break :blk .from(value);
         },
         inline .fixed64, .sfixed64, .double => |s| blk: {
             try state.require(.fixed64);
@@ -127,7 +127,7 @@ fn fieldAsScalar(self: py.Object, scalar_raw: i64) !py.Object {
                 .fixed64 => |f| s.fromFixedBits(f.value),
                 else => unreachable,
             };
-            break :blk py.Object.from(@TypeOf(value), value);
+            break :blk .from(value);
         },
     };
 }
@@ -147,16 +147,7 @@ fn fieldString(self: py.Object) !py.Object {
         return raiseWireError(err);
     };
     defer py.allocator.free(data);
-    return py.Object.from([]const u8, data) catch |err| switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        error.PythonError => {
-            if (py.ffi.PyErr.exceptionMatches(.MemoryError)) return error.OutOfMemory;
-            if (py.ffi.PyErr.exceptionMatches(.ValueError)) {
-                return py.raise(.ValueError, "invalid utf-8");
-            }
-            return err;
-        },
-    };
+    return .from(data);
 }
 
 fn fieldBytes(self: py.Object) !py.Bytes {
@@ -166,7 +157,7 @@ fn fieldBytes(self: py.Object) !py.Bytes {
         return raiseWireError(err);
     };
     defer py.allocator.free(data);
-    return py.Bytes.fromSlice(data);
+    return .fromSlice(data);
 }
 
 fn fieldMessage(self: py.Object) !py.Object {
@@ -180,9 +171,7 @@ fn fieldMessage(self: py.Object) !py.Object {
 fn fieldSkip(self: py.Object) !void {
     const state = try Field.payloadFrom(self);
     const len_field = try fieldLen(state);
-    len_field.skip() catch |err| {
-        return raiseWireError(err);
-    };
+    len_field.skip() catch |err| return raiseWireError(err);
 }
 
 fn fieldRepeated(self: py.Object, scalar_raw: i64) !py.List {
@@ -212,7 +201,7 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
                 };
                 offset += bytes_read;
                 const out = scalar.fromVarint(value);
-                try list.append(@TypeOf(out), out);
+                try list.append(out);
             }
             return list;
         },
@@ -229,7 +218,6 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
                     .{scalar},
                 )),
             };
-            const T = scalar.Type();
             const chunk: usize = comptime scalar.size();
             if (slice.len % chunk != 0) return py.raise(.ValueError, length_error);
 
@@ -242,7 +230,7 @@ fn decodePackedSlice(slice: []const u8, comptime scalar: wire.Scalar) !py.List {
                 const raw = slice[start .. start + chunk];
                 const raw_ptr: *const [chunk]u8 = @ptrCast(raw.ptr);
                 const value = scalar.readInt(raw_ptr);
-                try list.set(T, i, value);
+                try list.set(i, value);
             }
             return list;
         },

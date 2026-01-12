@@ -212,15 +212,11 @@ fn int64_or_uint64(value: py.Object) !py.Tuple {
         .signed => true,
         .unsigned => false,
     };
-    try result.set(bool, 0, is_signed);
-    switch (parsed) {
-        .signed => |v| {
-            try result.set(@TypeOf(v), 1, v);
-        },
-        .unsigned => |v| {
-            try result.set(@TypeOf(v), 1, v);
-        },
-    }
+    try result.set(0, is_signed);
+    try switch (parsed) {
+        .signed => |v| result.set(1, v),
+        .unsigned => |v| result.set(1, v),
+    };
     return result;
 }
 
@@ -241,7 +237,7 @@ fn mask_u64(value: py.Object) ?u64 {
 //         return py.raise(.MemoryError, "out of memory");
 //     };
 //     defer py.allocator.free(text);
-//     return .from([]const u8, text);
+//     return .from(text);
 // }
 //
 // fn bigint_roundtrip(value: py.BigInt) !py.Object {
@@ -381,20 +377,20 @@ fn list_sum(values: py.List) !i64 {
 fn list_create(a: i64, b: i64, c: i64) !py.List {
     var list: py.List = try .init(3);
     errdefer list.deinit();
-    try list.set(i64, 0, a);
-    try list.set(i64, 1, b);
-    try list.set(i64, 2, c);
+    try list.set(0, a);
+    try list.set(1, b);
+    try list.set(2, c);
     return list;
 }
 
 fn list_append(list: py.List, value: i64) !py.List {
-    try list.append(i64, value);
+    try list.append(value);
     return list;
 }
 
 fn list_set(list: py.List, index: i64, value: i64) !py.List {
     const i: usize = @intCast(index);
-    try list.set(i64, i, value);
+    try list.set(i, value);
     return list;
 }
 
@@ -407,7 +403,7 @@ fn dict_len(dict: py.Dict) !usize {
 }
 
 fn dict_get(dict: py.Dict, key: []const u8) !?i64 {
-    const item = try dict.getItem([]const u8, key);
+    const item = try dict.getItem(key);
     if (item == null) return null;
     const value = try item.?.as(i64);
     return @as(?i64, value);
@@ -416,12 +412,12 @@ fn dict_get(dict: py.Dict, key: []const u8) !?i64 {
 fn dict_create(key: []const u8, value: i64) !py.Dict {
     var dict: py.Dict = try .init();
     errdefer dict.deinit();
-    try dict.setItem([]const u8, key, i64, value);
+    try dict.setItem(key, value);
     return dict;
 }
 
 fn dict_set(dict: py.Dict, key: []const u8, value: i64) !py.Dict {
-    try dict.setItem([]const u8, key, i64, value);
+    try dict.setItem(key, value);
     return dict;
 }
 
@@ -432,7 +428,7 @@ fn dict_keys(dict: py.Dict) !py.List {
     var iter: py.DictIter = try .fromObject(dict.obj);
     var i: usize = 0;
     while (iter.next()) |entry| {
-        try list.set(py.Object, i, entry.key.incref());
+        try list.set(i, entry.key.incref());
         i += 1;
     }
     return list;
@@ -461,8 +457,8 @@ fn tuple_create(a: i64, b: i64) !py.Object {
 fn tuple_create_manual(a: i64, b: i64) !py.Object {
     var tuple: py.Tuple = try .init(2);
     errdefer tuple.deinit();
-    try tuple.set(i64, 0, a);
-    try tuple.set(i64, 1, b);
+    try tuple.set(0, a);
+    try tuple.set(1, b);
     return tuple.obj;
 }
 
@@ -471,15 +467,15 @@ fn tuple_create_manual(a: i64, b: i64) !py.Object {
 // ============================================================================
 
 fn obj_call0(obj: py.Object) !py.Object {
-    return obj.call0();
+    return obj.call(.{});
 }
 
 fn obj_call1(obj: py.Object, arg: py.Object) !py.Object {
-    return obj.call1(py.Object, arg);
+    return obj.call(.{arg});
 }
 
 fn obj_call2(obj: py.Object, arg1: py.Object, arg2: py.Object) !py.Object {
-    return obj.call2(py.Object, arg1, py.Object, arg2);
+    return obj.call(.{ arg1, arg2 });
 }
 
 fn obj_getattr(obj: py.Object, name: [:0]const u8) !py.Object {
@@ -487,16 +483,16 @@ fn obj_getattr(obj: py.Object, name: [:0]const u8) !py.Object {
 }
 
 fn obj_setattr(obj: py.Object, name: [:0]const u8, value: py.Object) !bool {
-    try obj.setAttr(name, py.Object, value);
+    try obj.setAttr(name, value);
     return true;
 }
 
 fn obj_callmethod0(obj: py.Object, name: [:0]const u8) !py.Object {
-    return obj.callMethod0(name);
+    return obj.callMethod(name, .{});
 }
 
 fn obj_callmethod1(obj: py.Object, name: [:0]const u8, arg: py.Object) !py.Object {
-    return obj.callMethod1(name, py.Object, arg);
+    return obj.callMethod(name, .{arg});
 }
 
 fn obj_is_callable(obj: py.Object) bool {
@@ -635,9 +631,9 @@ fn import_math_pi() !f64 {
 }
 
 fn call_upper(value: []const u8) ![]const u8 {
-    const obj: py.Object = try .from([]const u8, value);
+    const obj: py.Object = try .from(value);
     defer obj.deinit();
-    const out = try obj.callMethod0("upper");
+    const out = try obj.callMethod("upper", .{});
     defer out.deinit();
     return out.as([]const u8);
 }
@@ -685,8 +681,8 @@ const Counter = py.class("Counter", "Counter class with mutable state.", .{
 
 fn counter_get(self: py.Object) !i64 {
     const count_obj = try self.getAttrOrNull("_count") orelse {
-        const zero: py.Object = try .from(i64, 0);
-        try self.setAttr("_count", py.Object, zero);
+        const zero: py.Object = try .from(@as(i64, 0));
+        try self.setAttr("_count", zero);
         return 0;
     };
     defer count_obj.deinit();
@@ -696,22 +692,22 @@ fn counter_get(self: py.Object) !i64 {
 fn counter_increment(self: py.Object) !i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + 1;
-    const new_obj: py.Object = try .from(i64, new_val);
-    try self.setAttr("_count", py.Object, new_obj);
+    const new_obj: py.Object = try .from(new_val);
+    try self.setAttr("_count", new_obj);
     return new_val;
 }
 
 fn counter_add(self: py.Object, value: i64) !i64 {
     const current = counter_get(self) catch return error.PythonError;
     const new_val = current + value;
-    const new_obj: py.Object = try .from(i64, new_val);
-    try self.setAttr("_count", py.Object, new_obj);
+    const new_obj: py.Object = try .from(new_val);
+    try self.setAttr("_count", new_obj);
     return new_val;
 }
 
 fn counter_reset(self: py.Object) !void {
-    const zero: py.Object = try .from(i64, 0);
-    try self.setAttr("_count", py.Object, zero);
+    const zero: py.Object = try .from(@as(i64, 0));
+    try self.setAttr("_count", zero);
 }
 
 const PayloadState = struct {
@@ -796,7 +792,7 @@ fn dunder_repr(self: py.Object) !py.Object {
     const text = std.fmt.bufPrint(&buffer, "DunderBasics({d})", .{value}) catch {
         return py.raise(.RuntimeError, "formatting failed");
     };
-    return .from([]const u8, text);
+    return .from(text);
 }
 
 fn dunder_str(self: py.Object) !py.Object {
@@ -805,7 +801,7 @@ fn dunder_str(self: py.Object) !py.Object {
     const text = std.fmt.bufPrint(&buffer, "DunderBasics value={d}", .{value}) catch {
         return py.raise(.RuntimeError, "formatting failed");
     };
-    return .from([]const u8, text);
+    return .from(text);
 }
 
 fn dunder_len(self: py.Object) !i64 {
@@ -838,7 +834,7 @@ fn subscript_get(self: py.Object, key: []const u8) !i64 {
     };
     defer store_obj.deinit();
     const store: py.Dict = try .fromObject(store_obj);
-    const item = try store.getItem([]const u8, key);
+    const item = try store.getItem(key);
     if (item == null) return py.raise(.KeyError, "missing key");
     return item.?.as(i64);
 }
@@ -848,12 +844,12 @@ fn subscript_set(self: py.Object, key: []const u8, value: i64) !void {
         var dict: py.Dict = try .init();
         defer dict.deinit();
         const dict_ref = dict.obj.incref();
-        try self.setAttr("_store", py.Object, dict_ref);
-        return dict.setItem([]const u8, key, i64, value);
+        try self.setAttr("_store", dict_ref);
+        return dict.setItem(key, value);
     };
     defer store_obj.deinit();
     const store: py.Dict = try .fromObject(store_obj);
-    try store.setItem([]const u8, key, i64, value);
+    try store.setItem(key, value);
 }
 
 fn subscript_del(self: py.Object, key: []const u8) !void {
@@ -861,7 +857,7 @@ fn subscript_del(self: py.Object, key: []const u8) !void {
         return py.raise(.KeyError, "missing key");
     };
     defer store_obj.deinit();
-    const result = try store_obj.callMethod1("__delitem__", []const u8, key);
+    const result = try store_obj.callMethod("__delitem__", .{key});
     result.deinit();
 }
 
@@ -1007,8 +1003,8 @@ fn number_divmod(self: py.Object, divisor: i64) !py.Tuple {
     const remainder: i64 = @mod(value, divisor);
     var out: py.Tuple = try .init(2);
     errdefer out.deinit();
-    try out.set(i64, 0, quotient);
-    try out.set(i64, 1, remainder);
+    try out.set(0, quotient);
+    try out.set(1, remainder);
     return out;
 }
 
@@ -1075,7 +1071,7 @@ fn number_index(self: py.Object) !i64 {
 }
 
 fn set_number_value(self: py.Object, value: i64) !void {
-    try self.setAttr("value", i64, value);
+    try self.setAttr("value", value);
 }
 
 fn number_iadd(self: py.Object, other: i64) !py.Object {
@@ -1166,7 +1162,7 @@ const ContextLock = py.class("ContextLock", "Class for context manager testing."
 });
 
 fn context_enter(self: py.Object) !py.Object {
-    try self.setAttr("entered", bool, true);
+    try self.setAttr("entered", true);
     return self.incref();
 }
 
@@ -1176,7 +1172,7 @@ fn context_exit(
     _: ?py.Object,
     _: ?py.Object,
 ) !bool {
-    try self.setAttr("exited", bool, true);
+    try self.setAttr("exited", true);
     return false;
 }
 
@@ -1205,7 +1201,7 @@ fn itercounter_next(self: py.Object) !i64 {
 
     if (current >= limit) return py.raise(.StopIteration, "iteration complete");
 
-    try self.setAttr("current", i64, current + 1);
+    try self.setAttr("current", current + 1);
     return current;
 }
 
@@ -1234,7 +1230,7 @@ const InitBox = py.class("InitBox", "Class for __init__ slot testing.", .{
 });
 
 fn initbox_init(self: py.Object, value: i64) !void {
-    try self.setAttr("value", i64, value);
+    try self.setAttr("value", value);
 }
 
 // Attribute access methods
@@ -1246,7 +1242,7 @@ const AttrAccessBox = py.class("AttrAccessBox", "Class for __getattribute__/__ge
 fn attr_getattribute(self: py.Object, name: py.Object) !py.Object {
     const name_slice = try name.unicodeSlice();
     if (std.mem.eql(u8, name_slice, "shadowed")) {
-        return .from([]const u8, "shadowed");
+        return .from("shadowed");
     }
 
     return self.genericGetAttr(name);
@@ -1255,7 +1251,7 @@ fn attr_getattribute(self: py.Object, name: py.Object) !py.Object {
 fn attr_getattr(_: py.Object, name: []const u8) !py.Object {
     var buffer: [64]u8 = undefined;
     const text = std.fmt.bufPrint(&buffer, "missing:{s}", .{name}) catch "missing";
-    return .from([]const u8, text);
+    return .from(text);
 }
 
 const AttrSetBox = py.class("AttrSetBox", "Class for __setattr__/__delattr__ testing.", .{
@@ -1282,15 +1278,15 @@ fn descriptor_get(self: py.Object, obj: ?py.Object, owner: ?py.Object) !py.Objec
     _ = owner;
     if (obj == null) return self.incref();
     if (try self.getAttrOrNull("_value")) |value_obj| return value_obj;
-    return .from([]const u8, "unset");
+    return .from("unset");
 }
 
 fn descriptor_set(self: py.Object, _: py.Object, value: py.Object) !void {
-    try self.setAttr("_value", py.Object, value);
+    try self.setAttr("_value", value);
 }
 
 fn descriptor_delete(self: py.Object, _: py.Object) !void {
-    const name_obj: py.Object = try .from([]const u8, "_value");
+    const name_obj: py.Object = try .from("_value");
     defer name_obj.deinit();
     try self.genericDelAttr(name_obj);
 }
@@ -1303,7 +1299,7 @@ const NewBox = py.class("NewBox", "Class for __new__ slot testing.", .{
 fn newbox_new(cls: py.Object, value: i64) !py.Object {
     var instance = try cls.newInstance(null, null);
     errdefer instance.deinit();
-    try instance.setAttr("value", i64, value);
+    try instance.setAttr("value", value);
     return instance;
 }
 

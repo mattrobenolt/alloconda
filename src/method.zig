@@ -340,6 +340,41 @@ pub fn richCompareSlotFromSpecs(comptime Specs: type) ?*anyopaque {
     return @ptrCast(@constCast(&Wrapper.call));
 }
 
+fn buildBinarySlot(comptime Specs: type, comptime decl: []const u8, comptime name: []const u8) ?*anyopaque {
+    if (!@hasDecl(Specs, decl)) return null;
+    const spec = @field(Specs, decl);
+    if (!hasSpec(spec)) return null;
+    return binarySlotFromSpec(@TypeOf(spec.func), @TypeOf(spec).kind, spec, name);
+}
+
+fn buildUnarySlot(comptime Specs: type, comptime decl: []const u8, comptime name: []const u8) ?*anyopaque {
+    if (!@hasDecl(Specs, decl)) return null;
+    const spec = @field(Specs, decl);
+    if (!hasSpec(spec)) return null;
+    return unarySlotFromSpec(@TypeOf(spec.func), @TypeOf(spec).kind, spec, name);
+}
+
+fn buildPowSlot(comptime Specs: type, comptime decl: []const u8, comptime name: []const u8) ?*anyopaque {
+    if (!@hasDecl(Specs, decl)) return null;
+    const spec = @field(Specs, decl);
+    if (!hasSpec(spec)) return null;
+    return powSlotFromSpec(@TypeOf(spec.func), @TypeOf(spec).kind, spec, name);
+}
+
+fn buildBoolSlot(comptime Specs: type, comptime decl: []const u8, comptime name: []const u8) ?*anyopaque {
+    if (!@hasDecl(Specs, decl)) return null;
+    const spec = @field(Specs, decl);
+    if (!hasSpec(spec)) return null;
+    return boolSlotFromSpec(@TypeOf(spec.func), @TypeOf(spec).kind, spec, name);
+}
+
+fn buildLenSlot(comptime Specs: type, comptime decl: []const u8, comptime name: []const u8) ?*anyopaque {
+    if (!@hasDecl(Specs, decl)) return null;
+    const spec = @field(Specs, decl);
+    if (!hasSpec(spec)) return null;
+    return lenSlotFromSpec(@TypeOf(spec.func), @TypeOf(spec).kind, spec, name);
+}
+
 pub const MappingSlots = struct {
     length: ?*anyopaque = null,
     subscript: ?*anyopaque = null,
@@ -392,18 +427,8 @@ pub fn mappingSlotsFromSpecs(comptime Specs: type) MappingSlots {
     validateMappingSpecs(Specs);
 
     return .{
-        .length = if (comptime hasSpec(Specs.len)) blk: {
-            const spec = Specs.len;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk lenSlotFromSpec(Func, kind, spec, "__len__");
-        } else null,
-        .subscript = if (comptime hasSpec(Specs.get)) blk: {
-            const spec = Specs.get;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__getitem__");
-        } else null,
+        .length = buildLenSlot(Specs, "len", "__len__"),
+        .subscript = buildBinarySlot(Specs, "get", "__getitem__"),
         .ass_subscript = if (comptime hasSpec(Specs.set) or hasSpec(Specs.del))
             assSubscriptSlotFromSpecs(Specs)
         else
@@ -429,216 +454,41 @@ pub fn numberSlotsFromSpecs(comptime Specs: type) NumberSlots {
     validateNumberSpecs(Specs);
 
     return .{
-        .add = if (comptime hasSpec(Specs.add)) blk: {
-            const spec = Specs.add;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__add__");
-        } else null,
-        .sub = if (comptime hasSpec(Specs.sub)) blk: {
-            const spec = Specs.sub;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__sub__");
-        } else null,
-        .mul = if (comptime hasSpec(Specs.mul)) blk: {
-            const spec = Specs.mul;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__mul__");
-        } else null,
-        .truediv = if (comptime hasSpec(Specs.truediv)) blk: {
-            const spec = Specs.truediv;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__truediv__");
-        } else null,
-        .floordiv = if (comptime hasSpec(Specs.floordiv)) blk: {
-            const spec = Specs.floordiv;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__floordiv__");
-        } else null,
-        .mod = if (comptime hasSpec(Specs.mod)) blk: {
-            const spec = Specs.mod;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__mod__");
-        } else null,
-        .pow = if (comptime hasSpec(Specs.pow)) blk: {
-            const spec = Specs.pow;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk powSlotFromSpec(Func, kind, spec, "__pow__");
-        } else null,
-        .divmod = if (comptime hasSpec(Specs.divmod)) blk: {
-            const spec = Specs.divmod;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__divmod__");
-        } else null,
-        .matmul = if (comptime hasSpec(Specs.matmul)) blk: {
-            const spec = Specs.matmul;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__matmul__");
-        } else null,
-        .neg = if (comptime hasSpec(Specs.neg)) blk: {
-            const spec = Specs.neg;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__neg__");
-        } else null,
-        .pos = if (comptime hasSpec(Specs.pos)) blk: {
-            const spec = Specs.pos;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__pos__");
-        } else null,
-        .abs = if (comptime hasSpec(Specs.abs)) blk: {
-            const spec = Specs.abs;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__abs__");
-        } else null,
-        .invert = if (comptime hasSpec(Specs.invert)) blk: {
-            const spec = Specs.invert;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__invert__");
-        } else null,
-        .and_op = if (comptime hasSpec(Specs.and_op)) blk: {
-            const spec = Specs.and_op;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__and__");
-        } else null,
-        .or_op = if (comptime hasSpec(Specs.or_op)) blk: {
-            const spec = Specs.or_op;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__or__");
-        } else null,
-        .xor_op = if (comptime hasSpec(Specs.xor_op)) blk: {
-            const spec = Specs.xor_op;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__xor__");
-        } else null,
-        .lshift = if (comptime hasSpec(Specs.lshift)) blk: {
-            const spec = Specs.lshift;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__lshift__");
-        } else null,
-        .rshift = if (comptime hasSpec(Specs.rshift)) blk: {
-            const spec = Specs.rshift;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__rshift__");
-        } else null,
-        .as_int = if (comptime hasSpec(Specs.as_int)) blk: {
-            const spec = Specs.as_int;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__int__");
-        } else null,
-        .as_float = if (comptime hasSpec(Specs.as_float)) blk: {
-            const spec = Specs.as_float;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__float__");
-        } else null,
-        .as_index = if (comptime hasSpec(Specs.as_index)) blk: {
-            const spec = Specs.as_index;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk unarySlotFromSpec(Func, kind, spec, "__index__");
-        } else null,
-        .bool_slot = if (comptime hasSpec(Specs.bool_method)) blk: {
-            const spec = Specs.bool_method;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk boolSlotFromSpec(Func, kind, spec, "__bool__");
-        } else null,
-        .inplace_add = if (comptime hasSpec(Specs.iadd)) blk: {
-            const spec = Specs.iadd;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__iadd__");
-        } else null,
-        .inplace_sub = if (comptime hasSpec(Specs.isub)) blk: {
-            const spec = Specs.isub;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__isub__");
-        } else null,
-        .inplace_mul = if (comptime hasSpec(Specs.imul)) blk: {
-            const spec = Specs.imul;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__imul__");
-        } else null,
-        .inplace_truediv = if (comptime hasSpec(Specs.itruediv)) blk: {
-            const spec = Specs.itruediv;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__itruediv__");
-        } else null,
-        .inplace_floordiv = if (comptime hasSpec(Specs.ifloordiv)) blk: {
-            const spec = Specs.ifloordiv;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__ifloordiv__");
-        } else null,
-        .inplace_mod = if (comptime hasSpec(Specs.imod)) blk: {
-            const spec = Specs.imod;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__imod__");
-        } else null,
-        .inplace_pow = if (comptime hasSpec(Specs.ipow)) blk: {
-            const spec = Specs.ipow;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk powSlotFromSpec(Func, kind, spec, "__ipow__");
-        } else null,
-        .inplace_and = if (comptime hasSpec(Specs.iand)) blk: {
-            const spec = Specs.iand;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__iand__");
-        } else null,
-        .inplace_or = if (comptime hasSpec(Specs.ior)) blk: {
-            const spec = Specs.ior;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__ior__");
-        } else null,
-        .inplace_xor = if (comptime hasSpec(Specs.ixor)) blk: {
-            const spec = Specs.ixor;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__ixor__");
-        } else null,
-        .inplace_lshift = if (comptime hasSpec(Specs.ilshift)) blk: {
-            const spec = Specs.ilshift;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__ilshift__");
-        } else null,
-        .inplace_rshift = if (comptime hasSpec(Specs.irshift)) blk: {
-            const spec = Specs.irshift;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__irshift__");
-        } else null,
-        .inplace_matmul = if (comptime hasSpec(Specs.imatmul)) blk: {
-            const spec = Specs.imatmul;
-            const Func = @TypeOf(spec.func);
-            const kind = @TypeOf(spec).kind;
-            break :blk binarySlotFromSpec(Func, kind, spec, "__imatmul__");
-        } else null,
+        .add = buildBinarySlot(Specs, "add", "__add__"),
+        .sub = buildBinarySlot(Specs, "sub", "__sub__"),
+        .mul = buildBinarySlot(Specs, "mul", "__mul__"),
+        .truediv = buildBinarySlot(Specs, "truediv", "__truediv__"),
+        .floordiv = buildBinarySlot(Specs, "floordiv", "__floordiv__"),
+        .mod = buildBinarySlot(Specs, "mod", "__mod__"),
+        .pow = buildPowSlot(Specs, "pow", "__pow__"),
+        .divmod = buildBinarySlot(Specs, "divmod", "__divmod__"),
+        .matmul = buildBinarySlot(Specs, "matmul", "__matmul__"),
+        .neg = buildUnarySlot(Specs, "neg", "__neg__"),
+        .pos = buildUnarySlot(Specs, "pos", "__pos__"),
+        .abs = buildUnarySlot(Specs, "abs", "__abs__"),
+        .invert = buildUnarySlot(Specs, "invert", "__invert__"),
+        .and_op = buildBinarySlot(Specs, "and_op", "__and__"),
+        .or_op = buildBinarySlot(Specs, "or_op", "__or__"),
+        .xor_op = buildBinarySlot(Specs, "xor_op", "__xor__"),
+        .lshift = buildBinarySlot(Specs, "lshift", "__lshift__"),
+        .rshift = buildBinarySlot(Specs, "rshift", "__rshift__"),
+        .as_int = buildUnarySlot(Specs, "as_int", "__int__"),
+        .as_float = buildUnarySlot(Specs, "as_float", "__float__"),
+        .as_index = buildUnarySlot(Specs, "as_index", "__index__"),
+        .bool_slot = buildBoolSlot(Specs, "bool_method", "__bool__"),
+        .inplace_add = buildBinarySlot(Specs, "iadd", "__iadd__"),
+        .inplace_sub = buildBinarySlot(Specs, "isub", "__isub__"),
+        .inplace_mul = buildBinarySlot(Specs, "imul", "__imul__"),
+        .inplace_truediv = buildBinarySlot(Specs, "itruediv", "__itruediv__"),
+        .inplace_floordiv = buildBinarySlot(Specs, "ifloordiv", "__ifloordiv__"),
+        .inplace_mod = buildBinarySlot(Specs, "imod", "__imod__"),
+        .inplace_pow = buildPowSlot(Specs, "ipow", "__ipow__"),
+        .inplace_and = buildBinarySlot(Specs, "iand", "__iand__"),
+        .inplace_or = buildBinarySlot(Specs, "ior", "__ior__"),
+        .inplace_xor = buildBinarySlot(Specs, "ixor", "__ixor__"),
+        .inplace_lshift = buildBinarySlot(Specs, "ilshift", "__ilshift__"),
+        .inplace_rshift = buildBinarySlot(Specs, "irshift", "__irshift__"),
+        .inplace_matmul = buildBinarySlot(Specs, "imatmul", "__imatmul__"),
     };
 }
 
@@ -685,17 +535,10 @@ fn CallWrapperType(
                 };
             }
 
-            if (kwargs) |kw| {
-                var pos: c.Py_ssize_t = 0;
-                if (PyDict.next(kw, &pos)) |entry| {
-                    const key_slice = PyUnicode.slice(entry.key) catch |err| {
-                        errors.setPythonError(err);
-                        return null;
-                    };
-                    errors.setPythonError(setUnexpectedKeywordError(key_slice));
-                    return null;
-                }
-            }
+            rejectUnexpectedKwargs(kwargs) catch |err| {
+                errors.setPythonError(err);
+                return null;
+            };
 
             return callImpl(func, self, args, include_self) catch |err| {
                 errors.setPythonError(err);
@@ -754,17 +597,10 @@ fn InitWrapperType(
                     return -1;
                 }
             else blk: {
-                if (kwargs) |kw| {
-                    var pos: c.Py_ssize_t = 0;
-                    if (PyDict.next(kw, &pos)) |entry| {
-                        const key_slice = PyUnicode.slice(entry.key) catch |err| {
-                            errors.setPythonError(err);
-                            return -1;
-                        };
-                        errors.setPythonError(setUnexpectedKeywordError(key_slice));
-                        return -1;
-                    }
-                }
+                rejectUnexpectedKwargs(kwargs) catch |err| {
+                    errors.setPythonError(err);
+                    return -1;
+                };
                 break :blk callImpl(func, self, args, true) catch |err| {
                     errors.setPythonError(err);
                     return -1;
@@ -799,17 +635,10 @@ fn NewWrapperType(
                 };
             }
 
-            if (kwargs) |kw| {
-                var pos: c.Py_ssize_t = 0;
-                if (PyDict.next(kw, &pos)) |entry| {
-                    const key_slice = PyUnicode.slice(entry.key) catch |err| {
-                        errors.setPythonError(err);
-                        return null;
-                    };
-                    errors.setPythonError(setUnexpectedKeywordError(key_slice));
-                    return null;
-                }
-            }
+            rejectUnexpectedKwargs(kwargs) catch |err| {
+                errors.setPythonError(err);
+                return null;
+            };
 
             return callImpl(func, type_obj, args, true) catch |err| {
                 errors.setPythonError(err);
@@ -1638,6 +1467,15 @@ fn callAndConvert(comptime func: anytype, args_tuple: anytype) ?*c.PyObject {
 // ============================================================================
 // Compile-time helpers
 // ============================================================================
+
+fn rejectUnexpectedKwargs(kwargs: ?*c.PyObject) PyError!void {
+    const kw = kwargs orelse return;
+    var pos: c.Py_ssize_t = 0;
+    if (PyDict.next(kw, &pos)) |entry| {
+        const key_slice = try PyUnicode.slice(entry.key);
+        return setUnexpectedKeywordError(key_slice);
+    }
+}
 
 fn hasSpec(comptime value: anytype) bool {
     const info = @typeInfo(@TypeOf(value));

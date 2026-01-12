@@ -191,7 +191,7 @@ fn writeScalarValue(writer: *fastproto.Writer, scalar: wire.Scalar, value: py.Ob
 fn flushStream(stream: py.Object) !void {
     const flush_obj = try stream.getAttrOrNull("flush") orelse return;
     defer flush_obj.deinit();
-    const result = try flush_obj.call0();
+    const result = try flush_obj.call(.{});
     result.deinit();
 }
 

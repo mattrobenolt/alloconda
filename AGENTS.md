@@ -35,29 +35,19 @@ Import order: `ffi` ← `errors` ← `types` ← `method` ← `module` (no circu
 
 ## Zig conventions
 
+See [ZIG_STYLE.md](ZIG_STYLE.md) for general Zig patterns and style. Below are alloconda-specific conventions.
+
+### Linting
+- Enforced by `zlint`. Key rules: `line-length` 120, `avoid-as` (casting).
+
 ### Module usage
 - Expose a single Python module via `pub const MODULE = ...`.
 - Prefer alloconda wrappers (`py.Object`, `py.List`, `py.Dict`, `py.Tuple`, helpers).
 - Avoid raw `py.ffi.c` unless the wrapper surface is missing.
 - Use `py.function`/`py.method`/`py.classmethod`/`py.staticmethod`.
 
-### Style preferences
-- **Linting:** Enforced by `zlint`. Key rules: `no-print` (use logging/errors), `line-length` 120, `avoid-as` (casting).
-- Use short aliases for `std` imports when repeated often:
-  ```zig
-  const std = @import("std");
-  const fmt = std.fmt;
-  const mem = std.mem;
-  const meta = std.meta;
-  ```
-- Prefer `switch` over `if` chains when matching on types or enums.
-- For comptime type dispatch, use `switch (T) { ... }` when matching specific types,
-  fall back to `switch (@typeInfo(T)) { ... }` for type categories (int, float, etc.).
-- Prefer typed initialization with inferred literals, e.g. `var foo: Thing = .{}` or
-  `var foo: Thing = try .init()` over `var foo = Thing{}` or `var foo = try Thing.init()`.
-- Prefer unused parameters named `_` instead of discarding them in the body (e.g. avoid `_ = value`).
-
 ### Type conversion pattern
+For comptime type dispatch, match specific types first, then fall back to `@typeInfo` for categories:
 ```zig
 switch (T) {
     Object => ...,
