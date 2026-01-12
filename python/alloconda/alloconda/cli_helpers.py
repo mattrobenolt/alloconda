@@ -27,7 +27,8 @@ def resolve_zig_command(use_pypi_zig: bool = False) -> list[str]:
     1. If use_pypi_zig=True, use ziglang PyPI package (error if not installed)
     2. If system zig is available (shutil.which), use it
     3. If ziglang PyPI package is importable, use it as fallback
-    4. Otherwise, raise an error with installation instructions
+    4. If uvx is available, use `uvx --from ziglang python-zig`
+    5. Otherwise, raise an error with installation instructions
 
     Args:
         use_pypi_zig: If True, force use of the ziglang PyPI package.
@@ -43,16 +44,25 @@ def resolve_zig_command(use_pypi_zig: bool = False) -> list[str]:
             raise click.ClickException(
                 "The ziglang package is not installed. Install it with: pip install ziglang"
             )
+        out.verbose("Zig resolution: using ziglang PyPI package (explicit)")
         return [sys.executable, "-m", "ziglang"]
 
     if shutil.which("zig"):
+        out.verbose("Zig resolution: using system zig")
         return ["zig"]
 
     if importlib.util.find_spec("ziglang") is not None:
+        out.verbose("Zig resolution: using ziglang PyPI package (fallback)")
         return [sys.executable, "-m", "ziglang"]
 
+    uvx_path = shutil.which("uvx")
+    if uvx_path:
+        out.verbose("Zig resolution: using ziglang via uvx")
+        return [uvx_path, "--from", "ziglang", "python-zig"]
+
     raise click.ClickException(
-        "No zig installation found. Either install zig system-wide or run: pip install ziglang"
+        "No zig installation found. Install zig system-wide, run `pip install ziglang`, "
+        "or install uv for automatic ziglang fetching."
     )
 
 

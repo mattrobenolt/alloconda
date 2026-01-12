@@ -54,10 +54,25 @@ class TestResolveZigCommand:
         cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
         assert cmd == [sys.executable, "-m", "ziglang"]
 
+    def test_falls_back_to_uvx_when_no_zig_or_ziglang(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Falls back to uvx when no system zig and ziglang not importable."""
+        from alloconda import cli_helpers
+
+        def fake_which(x: str) -> str | None:
+            return "/usr/bin/uvx" if x == "uvx" else None
+
+        monkeypatch.setattr("shutil.which", fake_which)
+        monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
+
+        cmd = cli_helpers.resolve_zig_command(use_pypi_zig=False)
+        assert cmd == ["/usr/bin/uvx", "--from", "ziglang", "python-zig"]
+
     def test_raises_when_no_zig_available(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Raises ClickException when neither system zig nor ziglang available."""
+        """Raises ClickException when no zig, ziglang, or uvx available."""
         import click
         from alloconda import cli_helpers
 
