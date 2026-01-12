@@ -1,0 +1,95 @@
+name: E2E
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Test with system zig installed via setup-zig
+  test-system-zig:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Sync dependencies
+        run: uv sync --all-packages --all-groups
+
+      - name: Build allotest with system zig
+        run: |
+          cd python/allotest
+          uv run alloconda build -v
+
+      - name: Test allotest
+        run: |
+          cd python/allotest
+          uv run pytest
+
+  # Test with ziglang PyPI package (no system zig)
+  test-ziglang-pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Sync dependencies with ziglang
+        run: uv sync --all-packages --all-groups --extra zig
+
+      - name: Verify no system zig
+        run: |
+          if command -v zig &> /dev/null; then
+            echo "ERROR: system zig should not be installed"
+            exit 1
+          fi
+
+      - name: Build allotest with ziglang PyPI
+        run: |
+          cd python/allotest
+          uv run alloconda build -v
+
+      - name: Test allotest
+        run: |
+          cd python/allotest
+          uv run pytest
+
+  # Test uvx fallback (no system zig, no ziglang installed)
+  test-uvx-fallback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Sync dependencies (without ziglang)
+        run: uv sync --all-packages --all-groups
+
+      - name: Verify no system zig
+        run: |
+          if command -v zig &> /dev/null; then
+            echo "ERROR: system zig should not be installed"
+            exit 1
+          fi
+
+      - name: Build allotest with uvx fallback
+        run: |
+          cd python/allotest
+          uv run alloconda build -v
+
+      - name: Test allotest
+        run: |
+          cd python/allotest
+          uv run pytest
